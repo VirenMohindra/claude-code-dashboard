@@ -52,9 +52,10 @@ claude-code-dashboard --help
 
 ### As a Claude Code slash command
 
-Add this to `~/.claude/commands/dashboard.md`:
+Create `~/.claude/commands/dashboard.md` with:
 
-````markdown
+<!-- prettier-ignore-start -->
+```text
 # Dashboard
 
 Generate and open the Claude Code configuration dashboard.
@@ -62,20 +63,14 @@ Generate and open the Claude Code configuration dashboard.
 ## Steps
 
 1. Run the dashboard generator script:
-   ```bash
    node ~/.claude/scripts/generate-dashboard.mjs
-   ```
-````
 
 2. Open the generated HTML file:
-
-   ```bash
    open ~/.claude/dashboard.html
-   ```
 
 3. Tell the user the dashboard is ready and where to find it.
-
-````
+```
+<!-- prettier-ignore-end -->
 
 Then run `/dashboard` from any Claude Code session.
 
@@ -83,7 +78,8 @@ Then run `/dashboard` from any Claude Code session.
 
 Create `~/.claude/dashboard.conf` to customize behavior:
 
-```conf
+<!-- prettier-ignore-start -->
+```text
 # Restrict scanning to specific directories (one per line):
 ~/work
 ~/personal/repos
@@ -91,7 +87,8 @@ Create `~/.claude/dashboard.conf` to customize behavior:
 # Define dependency chains:
 chain: ui-library -> app -> deploy
 chain: backend <- shared-types
-````
+```
+<!-- prettier-ignore-end -->
 
 If no directories are listed, the entire home directory is scanned (depth 5).
 
