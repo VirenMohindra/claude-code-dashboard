@@ -9,11 +9,7 @@ import assert from "node:assert/strict";
 // ── HTML Escaping ────────────────────────────────────────────────────────────
 
 const esc = (s) =>
-  s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 describe("esc()", () => {
   it("escapes ampersands", () => {

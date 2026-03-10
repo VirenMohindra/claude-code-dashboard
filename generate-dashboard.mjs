@@ -17,10 +17,7 @@
  */
 
 import { execFileSync, execFile } from "child_process";
-import {
-  readFileSync, writeFileSync, existsSync,
-  readdirSync, statSync, mkdirSync,
-} from "fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSync } from "fs";
 import { join, basename, dirname } from "path";
 import { homedir } from "os";
 
@@ -43,10 +40,33 @@ const ONE_YEAR = 31_536_000;
 
 // Directories to skip during repo discovery
 const PRUNE = new Set([
-  "node_modules", ".Trash", "Library", ".cache", ".npm", ".yarn", ".pnpm",
-  ".local", ".cargo", ".rustup", ".gradle", ".m2", ".cocoapods", ".android",
-  "Caches", ".virtualenvs", ".pyenv", ".nvm", ".rbenv", ".gem", ".docker",
-  ".orbstack", "go", "venv", "__pycache__", ".tox", ".git",
+  "node_modules",
+  ".Trash",
+  "Library",
+  ".cache",
+  ".npm",
+  ".yarn",
+  ".pnpm",
+  ".local",
+  ".cargo",
+  ".rustup",
+  ".gradle",
+  ".m2",
+  ".cocoapods",
+  ".android",
+  "Caches",
+  ".virtualenvs",
+  ".pyenv",
+  ".nvm",
+  ".rbenv",
+  ".gem",
+  ".docker",
+  ".orbstack",
+  "go",
+  "venv",
+  "__pycache__",
+  ".tox",
+  ".git",
 ]);
 
 // Lines matching these patterns are skipped when extracting project descriptions.
@@ -123,11 +143,7 @@ const cliArgs = parseArgs(process.argv);
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const esc = (s) =>
-  s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 const shortPath = (p) => p.replace(HOME, "~");
 
@@ -151,7 +167,11 @@ function findGitRepos(roots, maxDepth) {
   function walk(dir, depth) {
     if (depth > maxDepth) return;
     let entries;
-    try { entries = readdirSync(dir); } catch { return; }
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      return;
+    }
     for (const entry of entries) {
       if (entry === ".git") {
         repos.push(dir);
@@ -161,7 +181,9 @@ function findGitRepos(roots, maxDepth) {
       const full = join(dir, entry);
       try {
         if (statSync(full).isDirectory()) walk(full, depth + 1);
-      } catch { /* permission denied, symlink loops, etc */ }
+      } catch {
+        /* permission denied, symlink loops, etc */
+      }
     }
   }
   for (const root of roots) {
@@ -187,7 +209,11 @@ function getScanRoots() {
 
 function getDesc(filepath) {
   let lines;
-  try { lines = readFileSync(filepath, "utf8").split("\n"); } catch { return ""; }
+  try {
+    lines = readFileSync(filepath, "utf8").split("\n");
+  } catch {
+    return "";
+  }
 
   // YAML frontmatter
   if (lines[0] === "---") {
@@ -212,14 +238,21 @@ function getDesc(filepath) {
 
 function extractProjectDesc(filepath) {
   let lines;
-  try { lines = readFileSync(filepath, "utf8").split("\n"); } catch { return []; }
+  try {
+    lines = readFileSync(filepath, "utf8").split("\n");
+  } catch {
+    return [];
+  }
 
   const result = [];
   let inCode = false;
   let foundContent = false;
 
   for (const line of lines) {
-    if (line.startsWith("```")) { inCode = !inCode; continue; }
+    if (line.startsWith("```")) {
+      inCode = !inCode;
+      continue;
+    }
     if (inCode) continue;
     if (line.startsWith("# ") && result.length === 0) continue;
     if (!line.trim() && !foundContent) continue;
@@ -237,14 +270,21 @@ function extractProjectDesc(filepath) {
 
 function extractSections(filepath) {
   let lines;
-  try { lines = readFileSync(filepath, "utf8").split("\n"); } catch { return []; }
+  try {
+    lines = readFileSync(filepath, "utf8").split("\n");
+  } catch {
+    return [];
+  }
 
   const sections = [];
   let current = null;
   let inCode = false;
 
   for (const line of lines) {
-    if (line.startsWith("```")) { inCode = !inCode; continue; }
+    if (line.startsWith("```")) {
+      inCode = !inCode;
+      continue;
+    }
     if (inCode) continue;
 
     if (line.startsWith("## ")) {
@@ -265,7 +305,11 @@ function extractSections(filepath) {
 
 function extractSteps(filepath) {
   let lines;
-  try { lines = readFileSync(filepath, "utf8").split("\n"); } catch { return []; }
+  try {
+    lines = readFileSync(filepath, "utf8").split("\n");
+  } catch {
+    return [];
+  }
 
   const steps = [];
   for (const line of lines) {
@@ -295,12 +339,23 @@ function scanMdDir(dir) {
       const desc = getDesc(full);
       results.push({ name, desc: desc || "No description", filepath: full });
     }
-  } catch { /* directory unreadable */ }
+  } catch {
+    /* directory unreadable */
+  }
   return results.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function getFreshness(repoDir) {
-  const ts = gitCmd(repoDir, "log", "-1", "--format=%ct", "--", "CLAUDE.md", "AGENTS.md", ".claude/");
+  const ts = gitCmd(
+    repoDir,
+    "log",
+    "-1",
+    "--format=%ct",
+    "--",
+    "CLAUDE.md",
+    "AGENTS.md",
+    ".claude/",
+  );
   const parsed = Number(ts);
   return Number.isFinite(parsed) ? parsed : 0;
 }
@@ -423,7 +478,7 @@ function renderSections(sections) {
         (s.preview.length
           ? `<div class="agent-section-preview">${s.preview.map((l) => `<div class="line">${esc(l)}</div>`).join("")}</div>`
           : "") +
-        `</details>`
+        `</details>`,
     )
     .join("");
 }
@@ -432,9 +487,7 @@ function renderCmd(cmd, prefix = "/") {
   const steps = extractSteps(cmd.filepath);
   const d = esc(cmd.desc);
   if (steps.length) {
-    const body = steps
-      .map((s) => `<div class="detail-${s.type}">${esc(s.text)}</div>`)
-      .join("");
+    const body = steps.map((s) => `<div class="detail-${s.type}">${esc(s.text)}</div>`).join("");
     return `<details class="cmd-detail"><summary><span class="cmd-name">${prefix}${esc(cmd.name)}</span><span class="cmd-desc">${d}</span></summary><div class="detail-body">${body}</div></details>`;
   }
   return `<div class="cmd-row"><span class="cmd-name">${prefix}${esc(cmd.name)}</span><span class="cmd-desc">${d}</span></div>`;
@@ -453,7 +506,8 @@ function renderBadges(repo) {
   const b = [];
   if (repo.commands.length) b.push(`<span class="badge cmds">${repo.commands.length} cmd</span>`);
   if (repo.rules.length) b.push(`<span class="badge rules">${repo.rules.length} rules</span>`);
-  if (repo.sections.length) b.push(`<span class="badge agent">${repo.sections.length} sections</span>`);
+  if (repo.sections.length)
+    b.push(`<span class="badge agent">${repo.sections.length} sections</span>`);
   return b.join("");
 }
 
@@ -498,8 +552,12 @@ function renderRepoCard(repo) {
 }
 
 const now = new Date();
-const timestamp = now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }).toLowerCase()
-  + " at " + now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).toLowerCase();
+const timestamp =
+  now
+    .toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    .toLowerCase() +
+  " at " +
+  now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).toLowerCase();
 
 const scanScope = existsSync(CONF) ? `config: ${shortPath(CONF)}` : "~/ (depth 5)";
 
@@ -735,8 +793,7 @@ console.log(outputPath);
 
 if (cliArgs.open) {
   // Cross-platform open
-  const cmd = process.platform === "darwin" ? "open"
-    : process.platform === "win32" ? "start"
-    : "xdg-open";
+  const cmd =
+    process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
   execFile(cmd, [outputPath]);
 }

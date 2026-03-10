@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+
+  test:
+    name: Test (Node ${{ matrix.node-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+        os: [ubuntu-latest]
+        include:
+          - node-version: 22
+            os: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  dry-run:
+    name: Generation Dry Run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Create minimal Claude config for testing
+        run: |
+          mkdir -p ~/.claude/commands ~/.claude/rules
+          echo "# Test command" > ~/.claude/commands/test.md
+          echo "# Test rule" > ~/.claude/rules/test.md
+      - name: Run generator
+        run: node generate-dashboard.mjs --output /tmp/dashboard.html
+      - name: Verify output exists and is valid HTML
+        run: |
+          test -f /tmp/dashboard.html
+          head -1 /tmp/dashboard.html | grep -q '<!DOCTYPE html>'
+          echo "Dashboard generated successfully ($(wc -c < /tmp/dashboard.html) bytes)"
+      - name: Verify CLI flags
+        run: |
+          node generate-dashboard.mjs --version | grep -q "0.1.0"
+          node generate-dashboard.mjs --help | grep -q "Usage"
