@@ -1,0 +1,32 @@
+{
+  "name": "claude-code-dashboard",
+  "version": "0.1.0",
+  "description": "A visual dashboard for your Claude Code configuration across all repos",
+  "type": "module",
+  "bin": {
+    "claude-code-dashboard": "./generate-dashboard.mjs"
+  },
+  "scripts": {
+    "generate": "node generate-dashboard.mjs",
+    "test": "node --test test/"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "dashboard",
+    "developer-tools",
+    "cli"
+  ],
+  "author": "Viren Mohindra",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VirenMohindra/claude-code-dashboard"
+  },
+  "files": [
+    "generate-dashboard.mjs"
+  ]
+}
