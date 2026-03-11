@@ -484,7 +484,7 @@ export function generateDemoData() {
     ),
     driftCount: configured.filter((r) => r.drift.level === "medium" || r.drift.level === "high")
       .length,
-    mcpCount: 4,
+    mcpCount: 5,
     scanScope: "~/work (depth 5)",
     insights: [
       {

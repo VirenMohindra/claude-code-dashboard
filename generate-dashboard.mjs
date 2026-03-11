@@ -274,9 +274,11 @@ if (existsSync(userMcpPath)) {
 }
 
 // ~/.claude.json is the primary location where `claude mcp add` writes
+let claudeJsonParsed = null;
 if (existsSync(claudeJsonPath)) {
   try {
     const content = readFileSync(claudeJsonPath, "utf8");
+    claudeJsonParsed = JSON.parse(content);
     const existing = new Set(allMcpServers.filter((s) => s.scope === "user").map((s) => s.name));
     for (const s of parseUserMcpConfig(content)) {
       if (!existing.has(s.name)) allMcpServers.push(s);
@@ -304,10 +306,9 @@ for (const repoDir of allRepoPaths) {
 
 // Disabled MCP servers
 const disabledMcpByRepo = {};
-if (existsSync(claudeJsonPath)) {
+if (claudeJsonParsed) {
   try {
-    const claudeJsonContent = readFileSync(claudeJsonPath, "utf8");
-    const claudeJson = JSON.parse(claudeJsonContent);
+    const claudeJson = claudeJsonParsed;
     for (const [path, entry] of Object.entries(claudeJson)) {
       if (
         typeof entry === "object" &&
@@ -452,8 +453,13 @@ if (existsSync(reportPath)) {
     let subtitle = subtitleMatch ? subtitleMatch[1] : null;
     if (subtitle) {
       subtitle = subtitle.replace(/(\d{4})-(\d{2})-(\d{2})/g, (_, y, m2, d) => {
-        const dt = new Date(`${y}-${m2}-${d}T00:00:00`);
-        return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+        const dt = new Date(`${y}-${m2}-${d}T00:00:00Z`);
+        return dt.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+          timeZone: "UTC",
+        });
       });
     }
 
@@ -539,7 +545,7 @@ if (ccusageData && ccusageData.daily) {
   const existingDates = new Set((statsCache.dailyActivity || []).map((d) => d.date));
   const ccusageSupplemental = ccusageData.daily
     .filter((d) => d.date && !existingDates.has(d.date) && d.totalTokens > 0)
-    .map((d) => ({ date: d.date, messageCount: 1 }));
+    .map((d) => ({ date: d.date, messageCount: Math.max(1, Math.round(d.totalTokens / 10000)) }));
   if (ccusageSupplemental.length > 0) {
     statsCache.dailyActivity = [...(statsCache.dailyActivity || []), ...ccusageSupplemental].sort(
       (a, b) => a.date.localeCompare(b.date),

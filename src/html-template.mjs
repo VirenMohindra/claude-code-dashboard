@@ -693,7 +693,7 @@ export function generateDashboardHtml({
   <div class="stat" data-nav="repos" data-section="repo-grid" title="View repos"><b>${totalRepoCmds}</b><span>Repo Commands</span></div>
   ${mcpCount > 0 ? `<div class="stat" data-nav="skills-mcp" data-section="section-mcp" title="View MCP servers"><b>${mcpCount}</b><span>MCP Servers</span></div>` : ""}
   ${driftCount > 0 ? `<div class="stat" data-nav="repos" data-section="repo-grid" title="View drifting repos" style="border-color:#f8717133"><b style="color:var(--red)">${driftCount}</b><span>Drifting Repos</span></div>` : ""}
-  ${ccusageData ? `<div class="stat" data-nav="analytics" data-section="section-insights-report" title="View analytics" style="border-color:#4ade8033"><b style="color:var(--green)">$${Math.round(Number(ccusageData.totals.totalCost) || 0).toLocaleString()}</b><span>Total Spent</span></div>` : ""}
+  ${ccusageData ? `<div class="stat" data-nav="analytics" data-section="section-activity" title="View analytics" style="border-color:#4ade8033"><b style="color:var(--green)">$${Math.round(Number(ccusageData.totals.totalCost) || 0).toLocaleString()}</b><span>Total Spent</span></div>` : ""}
   ${ccusageData ? `<div class="stat" data-nav="analytics" data-section="section-activity" title="View analytics"><b>${formatTokens(ccusageData.totals.totalTokens).replace(" tokens", "")}</b><span>Total Tokens</span></div>` : ""}
   ${usageAnalytics.heavySessions > 0 ? `<div class="stat" data-nav="analytics" data-section="section-activity" title="View analytics"><b>${usageAnalytics.heavySessions}</b><span>Heavy Sessions</span></div>` : ""}
 </div>
@@ -772,7 +772,7 @@ export function generateDashboardHtml({
         ? `<div class="report-glance">${insightsReport.glance.map((g) => `<div class="report-glance-item"><strong>${esc(g.label)}:</strong> ${esc(g.text)}</div>`).join("")}</div>`
         : ""
     }
-    <a class="report-link" href="file://${esc(insightsReport.filePath)}" target="_blank">View full insights report &rarr;</a>
+    <a class="report-link" href="file://${encodeURI(insightsReport.filePath)}" target="_blank">View full insights report &rarr;</a>
   </div>`
       : `<div class="card report-card">
     <h2>Claude Code Insights</h2>
@@ -936,7 +936,7 @@ document.addEventListener('mouseout', function(e) {
     t.title = t.dataset.tip;
     delete t.dataset.tip;
   }
-  if (!e.relatedTarget || !e.relatedTarget.closest('.heatmap-cell, .peak-bar')) {
+  if (!e.relatedTarget || !e.relatedTarget.closest || !e.relatedTarget.closest('.heatmap-cell, .peak-bar')) {
     tip.classList.remove('visible');
   }
 });
