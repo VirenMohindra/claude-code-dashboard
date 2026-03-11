@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 // Now that pure functions live in src/ modules (no side effects on import),
 // we import them directly instead of re-implementing them here.
-import { esc, anonymizePath } from "../src/helpers.mjs";
+import { esc, anonymizePath, insightsToMarkdown } from "../src/helpers.mjs";
 import { relativeTime, freshnessClass } from "../src/freshness.mjs";
 import { ONE_DAY, THIRTY_DAYS, NINETY_DAYS, ONE_YEAR } from "../src/constants.mjs";
 import { getDescFromContent } from "../src/markdown.mjs";
@@ -1455,5 +1455,55 @@ describe("computeDashboardDiff()", () => {
 
   it("handles null", () => {
     assert.equal(computeDashboardDiff(null, null).added.length, 0);
+  });
+});
+
+// ── insightsToMarkdown ──────────────────────────────────────────────────────
+
+describe("insightsToMarkdown()", () => {
+  it("returns empty string for empty input", () => {
+    assert.equal(insightsToMarkdown([]), "");
+    assert.equal(insightsToMarkdown(null), "");
+    assert.equal(insightsToMarkdown(undefined), "");
+  });
+
+  it("uses correct icon per insight type", () => {
+    const types = ["warning", "tip", "promote", "info"];
+    const expected = ["\u26A0\uFE0F", "\u2728", "\u2B06", "\u2139\uFE0F"];
+    for (let i = 0; i < types.length; i++) {
+      const md = insightsToMarkdown([{ type: types[i], title: "test" }]);
+      assert.ok(md.includes(expected[i]), `${types[i]} should use ${expected[i]}`);
+    }
+  });
+
+  it("falls back to info icon for unknown type", () => {
+    const md = insightsToMarkdown([{ type: "unknown", title: "test" }]);
+    assert.ok(md.includes("\u2139\uFE0F"));
+  });
+
+  it("includes title, detail, and action", () => {
+    const md = insightsToMarkdown([
+      {
+        type: "warning",
+        title: "Drift detected",
+        detail: "repo-a, repo-b",
+        action: "Update config",
+      },
+    ]);
+    assert.ok(md.includes("# Dashboard Insights"));
+    assert.ok(md.includes("## \u26A0\uFE0F Drift detected"));
+    assert.ok(md.includes("repo-a, repo-b"));
+    assert.ok(md.includes("**Action:** Update config"));
+  });
+
+  it("skips missing detail and action", () => {
+    const md = insightsToMarkdown([{ type: "info", title: "Just a title" }]);
+    assert.ok(md.includes("Just a title"));
+    assert.ok(!md.includes("**Action:**"));
+  });
+
+  it("does not HTML-escape content (raw markdown)", () => {
+    const md = insightsToMarkdown([{ type: "info", title: 'Use <code> & "quotes"' }]);
+    assert.ok(md.includes('<code> & "quotes"'));
   });
 });

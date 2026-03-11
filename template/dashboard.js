@@ -139,9 +139,14 @@ document.querySelectorAll(".copy-md-btn").forEach(function (btn) {
     var card = btn.closest("[data-markdown]");
     if (!card) return;
     var md = card.dataset.markdown;
-    navigator.clipboard.writeText(md).then(function () {
-      showToast("Markdown copied to clipboard");
-    });
+    navigator.clipboard
+      .writeText(md)
+      .then(function () {
+        showToast("Markdown copied to clipboard");
+      })
+      .catch(function () {
+        showToast("Copy failed \u2014 use browser copy from the insights card");
+      });
   });
 });
 
@@ -149,9 +154,14 @@ document.querySelectorAll(".copy-md-btn").forEach(function (btn) {
 var refreshBtn = document.getElementById("refresh-btn");
 if (refreshBtn) {
   refreshBtn.addEventListener("click", function () {
-    navigator.clipboard.writeText("claude-code-dashboard --open").then(function () {
-      showToast("Copied \u2014 paste in terminal to refresh");
-    });
+    navigator.clipboard
+      .writeText("claude-code-dashboard --open")
+      .then(function () {
+        showToast("Copied \u2014 paste in terminal to refresh");
+      })
+      .catch(function () {
+        showToast("Run: claude-code-dashboard --open");
+      });
   });
 }
 

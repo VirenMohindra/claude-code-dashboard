@@ -61,6 +61,27 @@ describe("generateDashboardHtml (assembler)", () => {
     );
   });
 
+  it("renders refresh button in header", () => {
+    const html = generateDashboardHtml(data);
+    assert.ok(html.includes('id="refresh-btn"'));
+    assert.ok(html.includes("header-actions"));
+  });
+
+  it("renders copy-markdown button and data-markdown attribute when insights exist", () => {
+    const html = generateDashboardHtml(data);
+    const body = html.split("</style>")[1];
+    assert.ok(body.includes("copy-md-btn"), "Should render copy markdown button");
+    assert.ok(/data-markdown="/.test(body), "Should embed markdown in data attribute");
+    assert.ok(body.includes("# Dashboard Insights"), "Markdown should contain insights heading");
+  });
+
+  it("omits copy-markdown button when no insights", () => {
+    const noInsightsData = { ...data, insights: [] };
+    const html = generateDashboardHtml(noInsightsData);
+    const body = html.split("</style>")[1];
+    assert.ok(!/data-markdown="/.test(body), "Should not embed markdown when no insights");
+  });
+
   it("handles empty data gracefully", () => {
     const emptyData = {
       configured: [],

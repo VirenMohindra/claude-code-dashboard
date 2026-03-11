@@ -336,7 +336,7 @@ export function renderInsightsCard(insights, markdown) {
   return `<div class="card insight-card"${mdAttr}>
     <div class="card-header">
       <h2>Insights <span class="n">${insights.length}</span></h2>
-      ${markdown ? `<button class="copy-md-btn" data-target="insight-card" title="Copy as Markdown">&#128203; copy markdown</button>` : ""}
+      ${markdown ? `<button class="copy-md-btn" title="Copy as Markdown">&#128203; copy markdown</button>` : ""}
     </div>
     ${insights
       .map(
