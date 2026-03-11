@@ -12,7 +12,9 @@ Scans your home directory for git repos, collects Claude Code configuration (com
 - **Expandable cards** — collapsed 3-column grid, click to expand full details
 - **Search** — filter repos by name, path, or content (`/` to focus, `Esc` to clear)
 - **Global overview** — all global commands and rules in one place
+- **Skills dashboard** — scans `~/.claude/skills/` with source detection (superpowers, skills.sh, custom) and auto-categorization
 - **Dependency chains** — visualize repo relationships via config file
+- **JSON export** — `--json` flag dumps the full data model for downstream tooling
 - **Zero dependencies** — single Node.js script, no `npm install` required
 
 ## Install
@@ -45,6 +47,12 @@ claude-code-dashboard --open
 
 # Custom output path
 claude-code-dashboard --output ~/Desktop/dashboard.html
+
+# Export as JSON (to stdout)
+claude-code-dashboard --json
+
+# Export JSON to a file
+claude-code-dashboard --json --output ~/Desktop/dashboard.json
 
 # Show help
 claude-code-dashboard --help
@@ -96,13 +104,14 @@ If no directories are listed, the entire home directory is scanned (depth 5).
 
 For each git repo found, the dashboard checks for:
 
-| Path                      | What it shows                        |
-| ------------------------- | ------------------------------------ |
-| `CLAUDE.md` / `AGENTS.md` | Project description, config sections |
-| `.claude/commands/*.md`   | Custom slash commands                |
-| `.claude/rules/*.md`      | Custom rules                         |
-| `~/.claude/commands/*.md` | Global commands                      |
-| `~/.claude/rules/*.md`    | Global rules                         |
+| Path                          | What it shows                        |
+| ----------------------------- | ------------------------------------ |
+| `CLAUDE.md` / `AGENTS.md`     | Project description, config sections |
+| `.claude/commands/*.md`       | Custom slash commands                |
+| `.claude/rules/*.md`          | Custom rules                         |
+| `~/.claude/commands/*.md`     | Global commands                      |
+| `~/.claude/rules/*.md`        | Global rules                         |
+| `~/.claude/skills/*/SKILL.md` | Skills (with source detection)       |
 
 ## Requirements
 

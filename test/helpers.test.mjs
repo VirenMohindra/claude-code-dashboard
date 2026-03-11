@@ -243,3 +243,208 @@ describe("freshness number parsing", () => {
     assert.equal(result, 0);
   });
 });
+
+// ── Skill Categorization ──────────────────────────────────────────────────────
+
+const SKILL_CATEGORIES = {
+  workflow: ["plan", "workflow", "branch", "commit", "pr ", "review", "ship", "deploy", "execute"],
+  "code-quality": ["lint", "test", "quality", "format", "refactor", "clean", "verify", "tdd"],
+  debugging: ["debug", "fix", "error", "diagnose", "troubleshoot", "log", "ci-fix"],
+  research: [
+    "research",
+    "search",
+    "analyze",
+    "explore",
+    "investigate",
+    "compare",
+    "competitive",
+    "audit",
+    "find",
+  ],
+  integrations: ["slack", "github", "figma", "linear", "jira", "notion", "snowflake", "api", "mcp"],
+  "project-specific": ["pepper", "mneme", "detail", "storybook", "react-native", "blog"],
+};
+
+function categorizeSkill(name, content) {
+  const nameLower = name.toLowerCase();
+  const contentLower = content.toLowerCase();
+  let bestCategory = "workflow";
+  let bestScore = 0;
+
+  for (const [category, keywords] of Object.entries(SKILL_CATEGORIES)) {
+    const nameScore = keywords.reduce((sum, kw) => sum + (nameLower.includes(kw) ? 3 : 0), 0);
+    const contentScore = keywords.reduce((sum, kw) => sum + (contentLower.includes(kw) ? 1 : 0), 0);
+    const score = nameScore + contentScore;
+    if (score > bestScore) {
+      bestScore = score;
+      bestCategory = category;
+    }
+  }
+  return bestCategory;
+}
+
+describe("categorizeSkill()", () => {
+  it("categorizes debugging skills", () => {
+    assert.equal(
+      categorizeSkill("systematic-debugging", "Use when encountering any bug"),
+      "debugging",
+    );
+  });
+
+  it("categorizes ci-fix as debugging", () => {
+    assert.equal(
+      categorizeSkill("ci-fix-loop", "Enforce the 3-attempt rule for CI fix"),
+      "debugging",
+    );
+  });
+
+  it("categorizes research skills", () => {
+    assert.equal(
+      categorizeSkill("competitive-deep-dive", "Run a structured competitive analysis"),
+      "research",
+    );
+  });
+
+  it("categorizes integration skills", () => {
+    assert.equal(categorizeSkill("slack-digest", "Read a Slack channel or thread"), "integrations");
+  });
+
+  it("categorizes project-specific skills", () => {
+    assert.equal(
+      categorizeSkill(
+        "writing-react-native-storybook-stories",
+        "Create React Native Storybook stories",
+      ),
+      "project-specific",
+    );
+  });
+
+  it("categorizes workflow skills", () => {
+    assert.equal(categorizeSkill("pr-workflow", "End-to-end PR creation workflow"), "workflow");
+  });
+
+  it("categorizes code-quality skills", () => {
+    assert.equal(
+      categorizeSkill("test-driven-development", "Use when implementing, write test first tdd"),
+      "code-quality",
+    );
+  });
+
+  it("defaults to workflow for ambiguous content", () => {
+    assert.equal(categorizeSkill("unknown-skill", "some generic content"), "workflow");
+  });
+
+  it("categorizes figma integration", () => {
+    assert.equal(
+      categorizeSkill("figma-component", "Convert a Figma design to a React component"),
+      "integrations",
+    );
+  });
+
+  it("categorizes session/find skills as research", () => {
+    assert.equal(
+      categorizeSkill("find-session", "Find and explore past Claude Code sessions"),
+      "research",
+    );
+  });
+});
+
+// ── CLI Argument Parsing ────────────────────────────────────────────────────
+
+function parseArgs(argv) {
+  const args = { output: "default.html", open: false, json: false };
+  let i = 2;
+  while (i < argv.length) {
+    switch (argv[i]) {
+      case "--help":
+      case "-h":
+        args.help = true;
+        return args;
+      case "--version":
+      case "-v":
+        args.version = true;
+        return args;
+      case "--output":
+      case "-o":
+        args.output = argv[++i];
+        break;
+      case "--open":
+        args.open = true;
+        break;
+      case "--json":
+        args.json = true;
+        break;
+      default:
+        args.error = argv[i];
+        return args;
+    }
+    i++;
+  }
+  return args;
+}
+
+describe("parseArgs()", () => {
+  it("parses --json flag", () => {
+    const args = parseArgs(["node", "script", "--json"]);
+    assert.equal(args.json, true);
+  });
+
+  it("parses --json with --output", () => {
+    const args = parseArgs(["node", "script", "--json", "--output", "out.json"]);
+    assert.equal(args.json, true);
+    assert.equal(args.output, "out.json");
+  });
+
+  it("defaults json to false", () => {
+    const args = parseArgs(["node", "script"]);
+    assert.equal(args.json, false);
+  });
+
+  it("parses --open flag", () => {
+    const args = parseArgs(["node", "script", "--open"]);
+    assert.equal(args.open, true);
+  });
+
+  it("handles unknown flags", () => {
+    const args = parseArgs(["node", "script", "--bogus"]);
+    assert.equal(args.error, "--bogus");
+  });
+});
+
+// ── Skill Source Badge Rendering ────────────────────────────────────────────
+
+describe("skill source badge rendering", () => {
+  function sourceBadgeHtml(source) {
+    if (!source) return "";
+    switch (source.type) {
+      case "superpowers":
+        return `<span class="badge source superpowers">superpowers</span>`;
+      case "skills.sh": {
+        const label = source.repo ? `skills.sh · ${source.repo}` : "skills.sh";
+        return `<span class="badge source skillssh">${label}</span>`;
+      }
+      default:
+        return `<span class="badge source custom">custom</span>`;
+    }
+  }
+
+  it("renders superpowers badge", () => {
+    const html = sourceBadgeHtml({ type: "superpowers", repo: "obra/superpowers-skills" });
+    assert.ok(html.includes("superpowers"));
+    assert.ok(html.includes("badge"));
+  });
+
+  it("renders skills.sh badge with repo", () => {
+    const html = sourceBadgeHtml({ type: "skills.sh", repo: "storybookjs/react-native" });
+    assert.ok(html.includes("skills.sh · storybookjs/react-native"));
+  });
+
+  it("renders custom badge", () => {
+    const html = sourceBadgeHtml({ type: "custom" });
+    assert.ok(html.includes("custom"));
+  });
+
+  it("returns empty for null source", () => {
+    assert.equal(sourceBadgeHtml(null), "");
+  });
+});
