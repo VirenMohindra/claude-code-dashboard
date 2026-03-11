@@ -1571,6 +1571,22 @@ if (existsSync(sessionMetaDir)) {
 }
 const usageAnalytics = aggregateSessionMeta(sessionMetaFiles);
 
+// Real usage data from ccusage (if available)
+let ccusageData = null;
+try {
+  const raw = execFileSync("npx", ["ccusage@latest", "--json"], {
+    encoding: "utf8",
+    timeout: 30_000,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  const parsed = JSON.parse(raw);
+  if (parsed.totals && parsed.daily) {
+    ccusageData = parsed;
+  }
+} catch {
+  // ccusage not installed or timed out — fall back to stats-cache
+}
+
 // Stats cache from ~/.claude/stats-cache.json
 const statsCachePath = join(CLAUDE_DIR, "stats-cache.json");
 let statsCache = {};
@@ -1704,6 +1720,12 @@ if (cliArgs.json) {
       avgHealthScore: avgHealth,
       driftingRepos: driftCount,
       mcpServers: mcpCount,
+      ...(ccusageData
+        ? {
+            totalCost: ccusageData.totals.totalCost,
+            totalTokens: ccusageData.totals.totalTokens,
+          }
+        : {}),
     },
     globalCommands: globalCmds.map((c) => ({ name: c.name, description: c.desc })),
     globalRules: globalRules.map((r) => ({ name: r.name, description: r.desc })),
@@ -2236,6 +2258,10 @@ const html = `<!DOCTYPE html>
   .model-row:last-child { border-bottom: none; }
   .model-name { color: var(--text); font-weight: 500; }
   .model-tokens { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .token-breakdown { margin-top: .25rem; }
+  .tb-row { display: flex; justify-content: space-between; padding: .15rem 0; font-size: .68rem; }
+  .tb-label { color: var(--text-dim); }
+  .tb-val { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 500; }
 
   .health-bar { height: 4px; background: var(--surface2); border-radius: 2px; margin: .4rem 0 .5rem; position: relative; overflow: hidden; }
   .health-fill { height: 100%; border-radius: 2px; transition: width .3s; }
@@ -2324,6 +2350,8 @@ const html = `<!DOCTYPE html>
   <div class="stat"><b>${totalRepoCmds}</b><span>Repo Commands</span></div>
   ${mcpCount > 0 ? `<div class="stat"><b>${mcpCount}</b><span>MCP Servers</span></div>` : ""}
   ${driftCount > 0 ? `<div class="stat" style="border-color:#f8717133"><b style="color:var(--red)">${driftCount}</b><span>Drifting Repos</span></div>` : ""}
+  ${ccusageData ? `<div class="stat" style="border-color:#4ade8033"><b style="color:var(--green)">$${Math.round(ccusageData.totals.totalCost).toLocaleString()}</b><span>Total Spent</span></div>` : ""}
+  ${ccusageData ? `<div class="stat"><b>${formatTokens(ccusageData.totals.totalTokens).replace(" tokens", "")}</b><span>Total Tokens</span></div>` : ""}
 </div>
 
 <div class="top-grid">
@@ -2524,8 +2552,43 @@ ${(() => {
       <div class="peak-labels">${labels}</div>`;
   }
 
-  // Model usage
-  if (hasModels) {
+  // Model usage — prefer ccusage (real billing data) over stats-cache
+  if (ccusageData) {
+    // Aggregate per-model costs from ccusage daily breakdowns
+    const modelCosts = {};
+    for (const day of ccusageData.daily) {
+      for (const mb of day.modelBreakdowns || []) {
+        if (!modelCosts[mb.modelName]) modelCosts[mb.modelName] = { cost: 0, tokens: 0 };
+        modelCosts[mb.modelName].cost += mb.cost || 0;
+        modelCosts[mb.modelName].tokens +=
+          (mb.inputTokens || 0) +
+          (mb.outputTokens || 0) +
+          (mb.cacheCreationTokens || 0) +
+          (mb.cacheReadTokens || 0);
+      }
+    }
+    const modelRows = Object.entries(modelCosts)
+      .sort((a, b) => b[1].cost - a[1].cost)
+      .map(
+        ([name, data]) =>
+          `<div class="model-row"><span class="model-name">${esc(name)}</span><span class="model-tokens">$${data.cost.toFixed(0)} · ${formatTokens(data.tokens)}</span></div>`,
+      )
+      .join("\n      ");
+
+    // Token breakdown
+    const t = ccusageData.totals;
+    const breakdownHtml = `<div class="token-breakdown">
+      <div class="tb-row"><span class="tb-label">Cache Read</span><span class="tb-val">${formatTokens(t.cacheReadTokens)}</span></div>
+      <div class="tb-row"><span class="tb-label">Cache Creation</span><span class="tb-val">${formatTokens(t.cacheCreationTokens)}</span></div>
+      <div class="tb-row"><span class="tb-label">Output</span><span class="tb-val">${formatTokens(t.outputTokens)}</span></div>
+      <div class="tb-row"><span class="tb-label">Input</span><span class="tb-val">${formatTokens(t.inputTokens)}</span></div>
+    </div>`;
+
+    content += `<div class="label" style="margin-top:.75rem">Model Usage (via ccusage)</div>
+      ${modelRows}
+      <div class="label" style="margin-top:.75rem">Token Breakdown</div>
+      ${breakdownHtml}`;
+  } else if (hasModels) {
     const modelRows = Object.entries(modelUsage)
       .map(([name, usage]) => {
         const total = (usage.inputTokens || 0) + (usage.outputTokens || 0);
@@ -2537,7 +2600,7 @@ ${(() => {
           `<div class="model-row"><span class="model-name">${esc(m.name)}</span><span class="model-tokens">${formatTokens(m.total)}</span></div>`,
       )
       .join("\n      ");
-    content += `<div class="label" style="margin-top:.75rem">Model Usage</div>
+    content += `<div class="label" style="margin-top:.75rem">Model Usage (partial — install ccusage for full data)</div>
       ${modelRows}`;
   }
 
