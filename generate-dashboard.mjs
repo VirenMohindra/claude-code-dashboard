@@ -46,6 +46,7 @@ import {
   parseProjectMcpConfig,
   findPromotionCandidates,
   scanHistoricalMcpServers,
+  classifyHistoricalServers,
 } from "./src/mcp.mjs";
 import { aggregateSessionMeta } from "./src/usage.mjs";
 import { handleInit } from "./src/templates.mjs";
@@ -325,15 +326,37 @@ for (const s of allMcpServers) {
 for (const entry of Object.values(mcpByName)) {
   entry.disabledIn = disabledByServer[entry.name] || 0;
 }
+
+const historicalMcpMap = scanHistoricalMcpServers(CLAUDE_DIR);
+const currentMcpNames = new Set(allMcpServers.map((s) => s.name));
+const { recent: recentMcpServers, former: formerMcpServers } = classifyHistoricalServers(
+  historicalMcpMap,
+  currentMcpNames,
+);
+
+// Shorten project paths in former servers
+for (const server of formerMcpServers) {
+  server.projects = server.projects.map((p) => shortPath(p));
+}
+
+// Merge recently-seen servers into allMcpServers so they show up as current
+for (const server of recentMcpServers) {
+  if (!mcpByName[server.name]) {
+    mcpByName[server.name] = {
+      name: server.name,
+      type: "unknown",
+      projects: server.projects.map((p) => shortPath(p)),
+      userLevel: false,
+      disabledIn: disabledByServer[server.name] || 0,
+      recentlyActive: true,
+    };
+  }
+}
 const mcpSummary = Object.values(mcpByName).sort((a, b) => {
   if (a.userLevel !== b.userLevel) return a.userLevel ? -1 : 1;
   return a.name.localeCompare(b.name);
 });
 const mcpCount = mcpSummary.length;
-
-const historicalMcpNames = scanHistoricalMcpServers(CLAUDE_DIR);
-const currentMcpNames = new Set(allMcpServers.map((s) => s.name));
-const formerMcpServers = historicalMcpNames.filter((name) => !currentMcpNames.has(name)).sort();
 
 // ── Usage Analytics ──────────────────────────────────────────────────────────
 

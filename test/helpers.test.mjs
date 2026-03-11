@@ -24,6 +24,7 @@ import {
   parseProjectMcpConfig,
   findPromotionCandidates,
   scanHistoricalMcpServers,
+  classifyHistoricalServers,
 } from "../src/mcp.mjs";
 import { sourceBadgeHtml } from "../src/render.mjs";
 
@@ -1233,8 +1234,61 @@ describe("findPromotionCandidates()", () => {
 // ── Historical MCP Server Scanning ─────────────────────────────────────────
 
 describe("scanHistoricalMcpServers()", () => {
-  it("returns empty for nonexistent dir", () => {
-    assert.deepEqual(scanHistoricalMcpServers("/nonexistent"), []);
+  it("returns empty Map for nonexistent dir", () => {
+    const result = scanHistoricalMcpServers("/nonexistent");
+    assert.ok(result instanceof Map);
+    assert.equal(result.size, 0);
+  });
+});
+
+describe("classifyHistoricalServers()", () => {
+  it("classifies recent servers within cutoff", () => {
+    const now = new Date();
+    const recentDate = new Date(now);
+    recentDate.setDate(recentDate.getDate() - 5);
+    const oldDate = new Date(now);
+    oldDate.setDate(oldDate.getDate() - 60);
+
+    const historical = new Map([
+      ["playwright", { name: "playwright", projects: new Set(["/Users/me/app"]), lastSeen: recentDate }],
+      ["redis", { name: "redis", projects: new Set(["/Users/me/cache"]), lastSeen: oldDate }],
+      ["unknown-server", { name: "unknown-server", projects: new Set(), lastSeen: null }],
+    ]);
+    const currentNames = new Set();
+    const { recent, former } = classifyHistoricalServers(historical, currentNames);
+
+    assert.equal(recent.length, 1);
+    assert.equal(recent[0].name, "playwright");
+    assert.deepEqual(recent[0].projects, ["/Users/me/app"]);
+
+    assert.equal(former.length, 2);
+    assert.ok(former.some((f) => f.name === "redis"));
+    assert.ok(former.some((f) => f.name === "unknown-server"));
+  });
+
+  it("excludes servers already in current config", () => {
+    const historical = new Map([
+      ["playwright", { name: "playwright", projects: new Set(), lastSeen: new Date() }],
+    ]);
+    const currentNames = new Set(["playwright"]);
+    const { recent, former } = classifyHistoricalServers(historical, currentNames);
+    assert.equal(recent.length, 0);
+    assert.equal(former.length, 0);
+  });
+
+  it("respects custom recency days", () => {
+    const date = new Date();
+    date.setDate(date.getDate() - 10);
+    const historical = new Map([
+      ["sentry", { name: "sentry", projects: new Set(), lastSeen: date }],
+    ]);
+    const currentNames = new Set();
+
+    const within = classifyHistoricalServers(historical, currentNames, 15);
+    assert.equal(within.recent.length, 1);
+
+    const outside = classifyHistoricalServers(historical, currentNames, 5);
+    assert.equal(outside.former.length, 1);
   });
 });
 

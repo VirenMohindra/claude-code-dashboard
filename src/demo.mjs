@@ -409,7 +409,10 @@ export function generateDemoData() {
       { name: "sentry", type: "http", projects: [], userLevel: true, disabledIn: 0 },
     ],
     mcpPromotions: [{ name: "github", projects: ["~/work/acme-web", "~/work/payments-api"] }],
-    formerMcpServers: ["redis", "datadog"],
+    formerMcpServers: [
+      { name: "redis", projects: ["~/work/cache-service"], lastSeen: null },
+      { name: "datadog", projects: [], lastSeen: null },
+    ],
     consolidationGroups: [
       {
         stack: "next",

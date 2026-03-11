@@ -68,7 +68,9 @@ export function generateDashboardHtml({
                 : "";
             const scopeBadge = s.userLevel
               ? `<span class="badge mcp-global">global</span>`
-              : `<span class="badge mcp-project">project</span>`;
+              : s.recentlyActive
+                ? `<span class="badge mcp-recent">recent</span>`
+                : `<span class="badge mcp-project">project</span>`;
             const typeBadge = `<span class="badge mcp-type">${esc(s.type)}</span>`;
             const projects = s.projects.length
               ? `<span class="mcp-projects">${s.projects.map((p) => esc(p)).join(", ")}</span>`
@@ -86,7 +88,10 @@ export function generateDashboardHtml({
           : "";
         const formerHtml = formerMcpServers.length
           ? `<div class="label" style="margin-top:.75rem">Formerly Installed</div>
-  ${formerMcpServers.map((name) => `<div class="mcp-row mcp-former"><span class="mcp-name">${esc(name)}</span><span class="badge mcp-former-badge">removed</span></div>`).join("\n    ")}`
+  ${formerMcpServers.map((s) => {
+              const hint = s.projects.length ? `<span class="mcp-projects">${s.projects.map((p) => esc(p)).join(", ")}</span>` : "";
+              return `<div class="mcp-row mcp-former"><span class="mcp-name">${esc(s.name)}</span><span class="badge mcp-former-badge">removed</span>${hint}</div>`;
+            }).join("\n    ")}`
           : "";
         return `<div class="card">
   <h2>MCP Servers <span class="n">${mcpSummary.length}</span></h2>
@@ -469,6 +474,7 @@ export function generateDashboardHtml({
   .repo-card > summary {
     cursor: pointer; list-style: none; padding: .85rem 1rem;
     display: flex; flex-direction: column; gap: .3rem;
+    min-height: 7.5rem; justify-content: center;
   }
   .repo-card > summary::-webkit-details-marker { display: none; }
   .repo-card > summary:hover { background: var(--surface2); }
@@ -508,6 +514,7 @@ export function generateDashboardHtml({
   .mcp-projects { font-size: .65rem; color: var(--text-dim); margin-left: auto; }
   .badge.mcp-global { color: var(--green); border-color: #4ade8033; background: #4ade8010; }
   .badge.mcp-project { color: var(--blue); border-color: #60a5fa33; background: #60a5fa10; }
+  .badge.mcp-recent { color: var(--yellow); border-color: #fbbf2433; background: #fbbf2410; }
   .badge.mcp-type { color: var(--text-dim); border-color: var(--border); background: var(--surface2); text-transform: none; font-size: .5rem; }
   .mcp-promote { font-size: .72rem; color: var(--text-dim); padding: .4rem .5rem; background: rgba(251,191,36,.05); border: 1px solid rgba(251,191,36,.15); border-radius: 6px; margin-top: .3rem; }
   .mcp-promote .mcp-name { color: var(--yellow); }
