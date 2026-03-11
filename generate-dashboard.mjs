@@ -30,13 +30,18 @@ import {
   REPO_URL,
 } from "./src/constants.mjs";
 import { parseArgs, generateCompletions } from "./src/cli.mjs";
-import { shortPath, gitCmd } from "./src/helpers.mjs";
+import { shortPath } from "./src/helpers.mjs";
 import { anonymizeAll } from "./src/anonymize.mjs";
 import { generateDemoRawInputs } from "./src/demo.mjs";
 import { findGitRepos, getScanRoots } from "./src/discovery.mjs";
 import { extractProjectDesc, extractSections, scanMdDir } from "./src/markdown.mjs";
 import { scanSkillsDir, groupSkillsByCategory } from "./src/skills.mjs";
-import { detectTechStack, lintConfig, computeDashboardDiff } from "./src/analysis.mjs";
+import {
+  detectTechStack,
+  getGitRevCount,
+  lintConfig,
+  computeDashboardDiff,
+} from "./src/analysis.mjs";
 import { getFreshness } from "./src/freshness.mjs";
 import { parseUserMcpConfig, parseProjectMcpConfig, scanHistoricalMcpServers } from "./src/mcp.mjs";
 import { handleInit } from "./src/templates.mjs";
@@ -111,16 +116,7 @@ function collectRawInputs() {
     const freshness = hasConfig ? getFreshness(repoDir) : 0;
 
     // Compute gitRevCount for configured repos (used by pipeline for drift)
-    let gitRevCount = null;
-    if (hasConfig && freshness) {
-      const countStr = gitCmd(repoDir, "rev-list", "--count", `--since=${freshness}`, "HEAD");
-      if (countStr) {
-        const parsed = Number(countStr);
-        if (Number.isFinite(parsed)) {
-          gitRevCount = Math.max(0, parsed - 1);
-        }
-      }
-    }
+    const gitRevCount = hasConfig ? getGitRevCount(repoDir, freshness) : null;
 
     repos.push({
       name,
@@ -128,7 +124,7 @@ function collectRawInputs() {
       shortPath: shortPath(repoDir),
       commands,
       rules,
-      agentsFile: agentsFile ? agentsFile : null,
+      agentsFile,
       desc,
       sections,
       techStack: stackInfo.stacks,
@@ -215,8 +211,11 @@ function collectRawInputs() {
     }
   }
 
-  // Historical MCP servers
+  // Historical MCP servers — normalize project paths here (I/O side)
   const historicalMcpMap = scanHistoricalMcpServers(CLAUDE_DIR);
+  for (const [, entry] of historicalMcpMap) {
+    entry.projects = new Set([...entry.projects].map((p) => shortPath(p)));
+  }
 
   // Usage data — session meta files
   const SESSION_META_LIMIT = 1000;
@@ -316,7 +315,7 @@ function collectRawInputs() {
     insightsReportHtml,
     chains,
     scanScope,
-    _reportPath: reportPath,
+    insightsReportPath: reportPath,
   };
 }
 
@@ -324,11 +323,6 @@ function collectRawInputs() {
 
 const rawInputs = collectRawInputs();
 const data = buildDashboardData(rawInputs);
-
-// Set the insightsReport filePath (pipeline returns null, we have the real path)
-if (data.insightsReport) {
-  data.insightsReport.filePath = rawInputs._reportPath;
-}
 
 // ── Lint Subcommand ──────────────────────────────────────────────────────────
 

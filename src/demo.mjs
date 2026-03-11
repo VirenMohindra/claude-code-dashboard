@@ -295,28 +295,41 @@ const DEMO_GLOBAL_SKILLS = [
   },
 ];
 
+// Simple seeded PRNG for deterministic demo output (mulberry32)
+function seededRng(seed) {
+  let s = seed | 0;
+  return () => {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 function generateDemoHeatmap() {
+  const rng = seededRng(42);
   const days = [];
   const now = new Date();
   for (let i = 364; i >= 0; i--) {
     const d = new Date(now);
     d.setDate(d.getDate() - i);
     const date = d.toISOString().slice(0, 10);
-    // Weighted random: more activity on weekdays
+    // Weighted deterministic: more activity on weekdays
     const isWeekday = d.getDay() > 0 && d.getDay() < 6;
     const base = isWeekday ? 8 : 2;
-    const messageCount = Math.floor(Math.random() * base * 3);
+    const messageCount = Math.floor(rng() * base * 3);
     if (messageCount > 0) days.push({ date, messageCount });
   }
   return days;
 }
 
 function generateDemoHourCounts() {
+  const rng = seededRng(99);
   const counts = {};
   // Peak at 10am and 2pm
   for (let h = 0; h < 24; h++) {
     const peak = Math.exp(-((h - 10) ** 2) / 18) + Math.exp(-((h - 14) ** 2) / 12);
-    counts[String(h)] = Math.round(peak * 120 + Math.random() * 20);
+    counts[String(h)] = Math.round(peak * 120 + rng() * 20);
   }
   return counts;
 }
@@ -397,17 +410,18 @@ function buildDemoSessionMeta() {
     { lint_error: 1, type_error: 1 },
   ];
 
+  const rng = seededRng(247);
   for (let i = 0; i < 247; i++) {
-    const dayOffset = Math.floor(Math.random() * 60);
+    const dayOffset = Math.floor(rng() * 60);
     const date = new Date();
     date.setDate(date.getDate() - dayOffset);
-    const hour = 8 + Math.floor(Math.random() * 10);
-    date.setHours(hour, Math.floor(Math.random() * 60), 0, 0);
+    const hour = 8 + Math.floor(rng() * 10);
+    date.setHours(hour, Math.floor(rng() * 60), 0, 0);
 
     const variant = i % toolSets.length;
-    const userMsgs = 3 + Math.floor(Math.random() * 15);
-    const assistantMsgs = userMsgs + Math.floor(Math.random() * 5);
-    const duration = 5 + Math.floor(Math.random() * 40);
+    const userMsgs = 3 + Math.floor(rng() * 15);
+    const assistantMsgs = userMsgs + Math.floor(rng() * 5);
+    const duration = 5 + Math.floor(rng() * 40);
 
     sessions.push({
       start_time: date.toISOString(),

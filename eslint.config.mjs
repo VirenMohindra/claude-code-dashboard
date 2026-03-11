@@ -8,6 +8,7 @@ export default [
         console: "readonly",
         process: "readonly",
         URL: "readonly",
+        structuredClone: "readonly",
       },
     },
     rules: {

@@ -7,7 +7,6 @@
  */
 
 import { SIMILARITY_THRESHOLD } from "./constants.mjs";
-import { shortPath } from "./helpers.mjs";
 import { relativeTime, freshnessClass } from "./freshness.mjs";
 import {
   computeHealthScore,
@@ -200,10 +199,8 @@ export function buildDashboardData(raw) {
     currentMcpNames,
   );
 
-  // Normalize historical project paths
-  for (const server of [...recentMcpServers, ...formerMcpServers]) {
-    server.projects = server.projects.map((p) => shortPath(p));
-  }
+  // Historical project paths are already normalized by the caller (collectRawInputs
+  // applies shortPath on the I/O side, demo data uses short paths directly).
 
   // Merge recently-seen servers into mcpByName
   for (const server of recentMcpServers) {
@@ -286,7 +283,7 @@ export function buildDashboardData(raw) {
           glance: glanceSections,
           stats: reportStats,
           friction: frictionPoints.slice(0, 3),
-          filePath: null, // caller can set this if needed
+          filePath: raw.insightsReportPath || null,
         };
       }
     } catch {
@@ -297,7 +294,7 @@ export function buildDashboardData(raw) {
   // ── 6. Stats Supplementation ──────────────────────────────────────────
 
   // Make a copy so we don't mutate raw.statsCache
-  const statsCache = JSON.parse(JSON.stringify(raw.statsCache || {}));
+  const statsCache = structuredClone(raw.statsCache || {});
 
   // Supplement dailyActivity with session-meta data
   const sessionMetaFiles = raw.sessionMetaFiles || [];
