@@ -1263,7 +1263,7 @@ describe("aggregateSessionMeta()", () => {
     assert.equal(result.errorCategories[4].count, 6);
   });
 
-  it("aggregates error categories", () => {
+  it("aggregates error categories across sessions with different keys", () => {
     const sessions = [
       {
         duration_minutes: 5,
@@ -1733,7 +1733,8 @@ function anonymizePath(p) {
   return p
     .replace(/^\/Users\/[^/]+\//, "~/")
     .replace(/^\/home\/[^/]+\//, "~/")
-    .replace(/^C:\\Users\\[^\\]+\\/, "~\\");
+    .replace(/^C:\\Users\\[^\\]+\\/, "~\\")
+    .replace(/^C:\/Users\/[^/]+\//, "~/");
 }
 
 describe("anonymizePath()", () => {

@@ -28,7 +28,7 @@ import {
   readlinkSync,
   watch as fsWatch,
 } from "fs";
-import { join, basename, dirname } from "path";
+import { join, basename, dirname, resolve } from "path";
 import { homedir } from "os";
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -476,8 +476,9 @@ const esc = (s) =>
 
 const shortPath = (p) => p.replace(HOME, "~");
 
-/** Format large token counts as MM/BB shorthand. */
+/** Format large token counts as MM/BB shorthand. Guards against undefined/NaN. */
 function formatTokens(n) {
+  n = Number(n) || 0;
   if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B tokens`;
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M tokens`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K tokens`;
@@ -716,6 +717,7 @@ const CATEGORY_ORDER = [
 ];
 
 // Last verified against Claude Code v2.1.72 (March 2026)
+// TODO: Update when Claude Code adds new slash commands or tools
 const QUICK_REFERENCE = {
   essentialCommands: [
     { cmd: "/help", desc: "Show help and available commands" },
@@ -1108,7 +1110,7 @@ function lintConfig(repo) {
     repo.hasAgentsFile &&
     repo.commands.length === 0 &&
     repo.rules.length === 0 &&
-    repo.sections.length === 0
+    (repo.sections || []).length === 0
   ) {
     issues.push({
       level: "warn",
@@ -1124,7 +1126,8 @@ function anonymizePath(p) {
   return p
     .replace(/^\/Users\/[^/]+\//, "~/")
     .replace(/^\/home\/[^/]+\//, "~/")
-    .replace(/^C:\\Users\\[^\\]+\\/, "~\\");
+    .replace(/^C:\\Users\\[^\\]+\\/, "~\\")
+    .replace(/^C:\/Users\/[^/]+\//, "~/");
 }
 
 // ── Diff Computation ────────────────────────────────────────────────────────
@@ -1272,12 +1275,19 @@ function scanHistoricalMcpServers(claudeDir) {
   const historical = new Set();
   const fileHistoryDir = join(claudeDir, "file-history");
   if (!existsSync(fileHistoryDir)) return [];
+  const MAX_SESSION_DIRS = 200;
+  const MAX_FILES_TOTAL = 1000;
+  let filesRead = 0;
   try {
-    for (const sessionDir of readdirSync(fileHistoryDir)) {
+    const sessionDirs = readdirSync(fileHistoryDir).sort().slice(-MAX_SESSION_DIRS);
+    for (const sessionDir of sessionDirs) {
+      if (filesRead >= MAX_FILES_TOTAL) break;
       const sessionPath = join(fileHistoryDir, sessionDir);
       if (!statSync(sessionPath).isDirectory()) continue;
       try {
         for (const snapFile of readdirSync(sessionPath)) {
+          if (filesRead >= MAX_FILES_TOTAL) break;
+          filesRead++;
           const snapPath = join(sessionPath, snapFile);
           try {
             const content = readFileSync(snapPath, "utf8");
@@ -1617,19 +1627,45 @@ if (existsSync(sessionMetaDir)) {
 const usageAnalytics = aggregateSessionMeta(sessionMetaFiles);
 
 // Real usage data from ccusage (if available)
+// Skip in quiet mode (watch children) to avoid 5-30s network fetch per regeneration.
+// Use ccusage (not @latest) to avoid npm registry check on every run.
+// Cache result for 1 hour so repeated runs don't re-fetch.
 let ccusageData = null;
-try {
-  const raw = execFileSync("npx", ["ccusage@latest", "--json"], {
-    encoding: "utf8",
-    timeout: 30_000,
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-  const parsed = JSON.parse(raw);
-  if (parsed.totals && parsed.daily) {
-    ccusageData = parsed;
+const ccusageCachePath = join(CLAUDE_DIR, "ccusage-cache.json");
+const CCUSAGE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+if (!cliArgs.quiet) {
+  // Try cache first
+  try {
+    const cached = JSON.parse(readFileSync(ccusageCachePath, "utf8"));
+    if (cached._ts && Date.now() - cached._ts < CCUSAGE_TTL_MS && cached.totals && cached.daily) {
+      ccusageData = cached;
+    }
+  } catch {
+    /* no cache or stale */
   }
-} catch {
-  // ccusage not installed or timed out — fall back to stats-cache
+
+  if (!ccusageData) {
+    try {
+      const raw = execFileSync("npx", ["ccusage", "--json"], {
+        encoding: "utf8",
+        timeout: 30_000,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      const parsed = JSON.parse(raw);
+      if (parsed.totals && parsed.daily) {
+        ccusageData = parsed;
+        // Write cache
+        try {
+          writeFileSync(ccusageCachePath, JSON.stringify({ ...parsed, _ts: Date.now() }));
+        } catch {
+          /* non-critical */
+        }
+      }
+    } catch {
+      // ccusage not installed or timed out — fall back to stats-cache
+    }
+  }
 }
 
 // Stats cache from ~/.claude/stats-cache.json
@@ -1722,17 +1758,19 @@ if (cliArgs.diff) {
     try {
       const prev = JSON.parse(readFileSync(SNAPSHOT_PATH, "utf8"));
       const diff = computeDashboardDiff(prev, currentSnapshot);
-      console.log("Dashboard diff since last generation:");
-      if (diff.added.length) console.log(`  Added: ${diff.added.join(", ")}`);
-      if (diff.removed.length) console.log(`  Removed: ${diff.removed.join(", ")}`);
-      for (const c of diff.changed) console.log(`  ${c.name}: ${c.field} ${c.from} -> ${c.to}`);
-      if (!diff.added.length && !diff.removed.length && !diff.changed.length)
-        console.log("  No changes.");
+      if (!cliArgs.quiet) {
+        console.log("Dashboard diff since last generation:");
+        if (diff.added.length) console.log(`  Added: ${diff.added.join(", ")}`);
+        if (diff.removed.length) console.log(`  Removed: ${diff.removed.join(", ")}`);
+        for (const c of diff.changed) console.log(`  ${c.name}: ${c.field} ${c.from} -> ${c.to}`);
+        if (!diff.added.length && !diff.removed.length && !diff.changed.length)
+          console.log("  No changes.");
+      }
     } catch {
-      console.log("Previous snapshot unreadable, saving new baseline.");
+      if (!cliArgs.quiet) console.log("Previous snapshot unreadable, saving new baseline.");
     }
   } else {
-    console.log("No previous snapshot found, saving baseline.");
+    if (!cliArgs.quiet) console.log("No previous snapshot found, saving baseline.");
   }
   writeFileSync(SNAPSHOT_PATH, JSON.stringify(currentSnapshot, null, 2));
 }
@@ -2400,7 +2438,7 @@ const html = `<!DOCTYPE html>
   <div class="stat"><b>${totalRepoCmds}</b><span>Repo Commands</span></div>
   ${mcpCount > 0 ? `<div class="stat"><b>${mcpCount}</b><span>MCP Servers</span></div>` : ""}
   ${driftCount > 0 ? `<div class="stat" style="border-color:#f8717133"><b style="color:var(--red)">${driftCount}</b><span>Drifting Repos</span></div>` : ""}
-  ${ccusageData ? `<div class="stat" style="border-color:#4ade8033"><b style="color:var(--green)">$${Math.round(ccusageData.totals.totalCost).toLocaleString()}</b><span>Total Spent</span></div>` : ""}
+  ${ccusageData ? `<div class="stat" style="border-color:#4ade8033"><b style="color:var(--green)">$${Math.round(Number(ccusageData.totals.totalCost) || 0).toLocaleString()}</b><span>Total Spent</span></div>` : ""}
   ${ccusageData ? `<div class="stat"><b>${formatTokens(ccusageData.totals.totalTokens).replace(" tokens", "")}</b><span>Total Tokens</span></div>` : ""}
   ${usageAnalytics.heavySessions > 0 ? `<div class="stat"><b>${usageAnalytics.heavySessions}</b><span>Heavy Sessions</span></div>` : ""}
 </div>
@@ -2566,8 +2604,9 @@ ${(() => {
     }
 
     // Generate cells from first Sunday before firstDate to lastDate
+    // Use UTC methods consistently to avoid timezone off-by-one near midnight
     const start = new Date(firstDate);
-    start.setDate(start.getDate() - start.getDay()); // align to Sunday
+    start.setUTCDate(start.getUTCDate() - start.getUTCDay()); // align to Sunday (UTC)
 
     // Month labels
     const months = [];
@@ -2575,15 +2614,18 @@ ${(() => {
     const cursor1 = new Date(start);
     let weekIdx = 0;
     while (cursor1 <= lastDate) {
-      if (cursor1.getDay() === 0) {
-        const m = cursor1.getMonth();
+      if (cursor1.getUTCDay() === 0) {
+        const m = cursor1.getUTCMonth();
         if (m !== lastMonth) {
-          months.push({ name: cursor1.toLocaleString("en", { month: "short" }), week: weekIdx });
+          months.push({
+            name: cursor1.toLocaleString("en", { month: "short", timeZone: "UTC" }),
+            week: weekIdx,
+          });
           lastMonth = m;
         }
         weekIdx++;
       }
-      cursor1.setDate(cursor1.getDate() + 1);
+      cursor1.setUTCDate(cursor1.getUTCDate() + 1);
     }
     const totalWeeks = weekIdx;
     const monthLabels = months
@@ -2599,7 +2641,7 @@ ${(() => {
       const key = cursor2.toISOString().slice(0, 10);
       const count = dateMap.get(key) || 0;
       cells += `<div class="heatmap-cell${level(count)}" title="${esc(key)}: ${count} messages"></div>`;
-      cursor2.setDate(cursor2.getDate() + 1);
+      cursor2.setUTCDate(cursor2.getUTCDate() + 1);
     }
 
     content += `<div class="label">Activity</div>
@@ -2814,9 +2856,18 @@ groupSelect.addEventListener('change', function() {
   }
   var groups = {};
   cards.forEach(function(card) {
-    var key = mode === 'stack' ? (card.dataset.stack || 'undetected') : (card.dataset.parent || '~/');
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(card);
+    if (mode === 'stack') {
+      var stacks = (card.dataset.stack || 'undetected').split(',');
+      stacks.forEach(function(s) {
+        var key = s.trim() || 'undetected';
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(card);
+      });
+    } else {
+      var key = card.dataset.parent || '~/';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(card);
+    }
   });
   Object.keys(groups).sort().forEach(function(key) {
     var h = document.createElement('div');
@@ -2852,20 +2903,23 @@ if (cliArgs.watch) {
   let regenerating = false;
   const watchDirs = [CLAUDE_DIR, ...scanRoots.slice(0, 5)];
 
-  // Forward original flags minus --watch to avoid nested watchers
+  // Forward original flags minus --watch and --diff to avoid nested watchers
+  // and noisy snapshot writes on every file change
   const forwardedArgs = process.argv
     .slice(2)
-    .filter((a) => a !== "--watch")
+    .filter((a) => a !== "--watch" && a !== "--diff")
     .concat(["--quiet"]);
 
   // Resolve output path to detect and ignore self-writes
-  const resolvedOutput = join(dirname(outputPath), basename(outputPath));
+  const resolvedOutput = resolve(outputPath);
 
   function regenerate(_eventType, filename) {
-    // Ignore changes to our own output file to prevent infinite loops
+    // Ignore changes to our own output file and cache files to prevent infinite loops
     if (
       filename &&
-      (filename === basename(resolvedOutput) || filename === "dashboard-snapshot.json")
+      (filename === basename(resolvedOutput) ||
+        filename === "dashboard-snapshot.json" ||
+        filename === "ccusage-cache.json")
     )
       return;
     if (regenerating) return;
