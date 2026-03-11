@@ -2235,8 +2235,8 @@ const html = `<!DOCTYPE html>
   .usage-bar-lang { background: linear-gradient(90deg, var(--green), var(--accent)); }
   .usage-bar-count { font-size: .65rem; color: var(--text-dim); min-width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
 
-  .heatmap { display: inline-grid; grid-template-rows: repeat(7, 10px); grid-auto-flow: column; grid-auto-columns: 10px; gap: 2px; }
-  .heatmap-cell { width: 10px; height: 10px; border-radius: 2px; background: var(--surface2); }
+  .heatmap { display: grid; grid-template-rows: repeat(7, 1fr); grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; }
+  .heatmap-cell { aspect-ratio: 1; border-radius: 2px; background: var(--surface2); min-width: 6px; min-height: 6px; }
   .heatmap-cell.l1 { background: #0e4429; }
   .heatmap-cell.l2 { background: #006d32; }
   .heatmap-cell.l3 { background: #26a641; }
@@ -2461,7 +2461,7 @@ ${(() => {
   const hasHours = Object.keys(hourCounts).length > 0;
   const hasModels = Object.keys(modelUsage).length > 0;
 
-  if (!hasActivity && !hasHours && !hasModels) return "";
+  if (!hasActivity && !hasHours && !hasModels && !ccusageData) return "";
 
   let content = "";
 
@@ -2571,7 +2571,7 @@ ${(() => {
       .sort((a, b) => b[1].cost - a[1].cost)
       .map(
         ([name, data]) =>
-          `<div class="model-row"><span class="model-name">${esc(name)}</span><span class="model-tokens">$${data.cost.toFixed(0)} · ${formatTokens(data.tokens)}</span></div>`,
+          `<div class="model-row"><span class="model-name">${esc(name)}</span><span class="model-tokens">$${Math.round(data.cost).toLocaleString()} · ${formatTokens(data.tokens)}</span></div>`,
       )
       .join("\n      ");
 
