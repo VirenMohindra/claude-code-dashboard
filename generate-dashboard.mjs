@@ -1574,6 +1574,29 @@ if (existsSync(statsCachePath)) {
   }
 }
 
+// Supplement dailyActivity with session-meta data (stats-cache may be stale)
+if (sessionMetaFiles.length > 0) {
+  const existingDates = new Set((statsCache.dailyActivity || []).map((d) => d.date));
+  const sessionDayCounts = {};
+  for (const s of sessionMetaFiles) {
+    const date = (s.start_time || "").slice(0, 10);
+    if (!date || existingDates.has(date)) continue;
+    sessionDayCounts[date] =
+      (sessionDayCounts[date] || 0) +
+      (s.user_message_count || 0) +
+      (s.assistant_message_count || 0);
+  }
+  const supplemental = Object.entries(sessionDayCounts).map(([date, messageCount]) => ({
+    date,
+    messageCount,
+  }));
+  if (supplemental.length > 0) {
+    statsCache.dailyActivity = [...(statsCache.dailyActivity || []), ...supplemental].sort((a, b) =>
+      a.date.localeCompare(b.date),
+    );
+  }
+}
+
 // Stats
 const totalRepos = allRepoPaths.length;
 const configuredCount = configured.length;
