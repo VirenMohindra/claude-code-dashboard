@@ -66,3 +66,9 @@ jobs:
           node generate-dashboard.mjs --version | grep -qE "^[0-9]+\.[0-9]+\.[0-9]+$"
           node generate-dashboard.mjs --help | grep -q "Usage"
           node generate-dashboard.mjs --json | python3 -c "import json,sys; d=json.load(sys.stdin); assert 'version' in d; assert 'stats' in d"
+      - name: Verify --catalog flag
+        run: |
+          node generate-dashboard.mjs --catalog --output /tmp/catalog.html
+          test -f /tmp/catalog.html
+          head -1 /tmp/catalog.html | grep -q '<!DOCTYPE html>'
+          echo "Catalog generated successfully ($(wc -c < /tmp/catalog.html) bytes)"

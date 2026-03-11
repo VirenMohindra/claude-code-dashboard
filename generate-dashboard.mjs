@@ -32,7 +32,7 @@ import { homedir } from "os";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const VERSION = "0.3.0";
+const VERSION = "0.3.2";
 
 const HOME = homedir();
 const CLAUDE_DIR = join(HOME, ".claude");
@@ -94,7 +94,7 @@ const BOILERPLATE_RE = new RegExp(BOILERPLATE_PATTERNS.join("|"));
 // ── CLI Argument Parsing ─────────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const args = { output: DEFAULT_OUTPUT, open: false, json: false };
+  const args = { output: DEFAULT_OUTPUT, open: false, json: false, catalog: false };
   let i = 2; // skip node + script
   while (i < argv.length) {
     switch (argv[i]) {
@@ -111,6 +111,7 @@ Usage:
 Options:
   --output, -o <path>  Output path (default: ~/.claude/dashboard.html)
   --json               Output full data model as JSON instead of HTML
+  --catalog            Generate a shareable skill catalog HTML page
   --open               Open the dashboard in your default browser after generating
   --version, -v        Show version
   --help, -h           Show this help
@@ -138,6 +139,9 @@ Config file: ~/.claude/dashboard.conf
         break;
       case "--json":
         args.json = true;
+        break;
+      case "--catalog":
+        args.catalog = true;
         break;
       case "--open":
         args.open = true;
@@ -635,6 +639,34 @@ function computeDrift(repoDir, configTimestamp) {
   return { level: "high", commitsSince };
 }
 
+// ── Cross-Repo Suggestions ──────────────────────────────────────────────────
+
+function findExemplar(stack, configuredRepos) {
+  if (!stack || stack.length === 0) return null;
+  let best = null;
+  let bestScore = -1;
+  for (const repo of configuredRepos) {
+    const repoStacks = repo.techStack || [];
+    const overlap = stack.filter((s) => repoStacks.includes(s)).length;
+    if (overlap > 0 && (repo.healthScore || 0) > bestScore) {
+      bestScore = repo.healthScore || 0;
+      best = repo;
+    }
+  }
+  return best;
+}
+
+function generateSuggestions(exemplar) {
+  if (!exemplar) return [];
+  const suggestions = [];
+  if (exemplar.hasAgentsFile) suggestions.push("add CLAUDE.md");
+  if (exemplar.commands?.length > 0)
+    suggestions.push(`add commands (${exemplar.name} has ${exemplar.commands.length})`);
+  if (exemplar.rules?.length > 0)
+    suggestions.push(`add rules (${exemplar.name} has ${exemplar.rules.length})`);
+  return suggestions;
+}
+
 // ── Freshness ───────────────────────────────────────────────────────────────
 
 function getFreshness(repoDir) {
@@ -757,6 +789,18 @@ configured.sort((a, b) => {
 
 unconfigured.sort((a, b) => a.name.localeCompare(b.name));
 
+// Compute suggestions for unconfigured repos (needs full configured list)
+for (const repo of unconfigured) {
+  const exemplar = findExemplar(repo.techStack, configured);
+  if (exemplar) {
+    repo.suggestions = generateSuggestions(exemplar);
+    repo.exemplarName = exemplar.name;
+  } else {
+    repo.suggestions = [];
+    repo.exemplarName = "";
+  }
+}
+
 // Dependency chains from config
 function parseChains() {
   if (!existsSync(CONF)) return [];
@@ -851,6 +895,8 @@ if (cliArgs.json) {
       name: r.name,
       path: r.shortPath,
       techStack: r.techStack || [],
+      suggestions: r.suggestions || [],
+      exemplar: r.exemplarName || "",
     })),
   };
 
@@ -862,6 +908,24 @@ if (cliArgs.json) {
     console.log(cliArgs.output);
   } else {
     process.stdout.write(jsonOutput + "\n");
+  }
+  process.exit(0);
+}
+
+// ── Catalog Output (short-circuit before main HTML) ─────────────────────────
+
+if (cliArgs.catalog) {
+  const groups = groupSkillsByCategory(globalSkills);
+  const catalogHtml = generateCatalogHtml(groups, globalSkills.length, timestamp);
+  const outputPath =
+    cliArgs.output !== DEFAULT_OUTPUT ? cliArgs.output : join(CLAUDE_DIR, "skill-catalog.html");
+  mkdirSync(dirname(outputPath), { recursive: true });
+  writeFileSync(outputPath, catalogHtml);
+  console.log(outputPath);
+  if (cliArgs.open) {
+    const cmd =
+      process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+    execFile(cmd, [outputPath]);
   }
   process.exit(0);
 }
@@ -939,6 +1003,90 @@ function groupSkillsByCategory(skills) {
     if (groups[cat].length === 0) delete groups[cat];
   }
   return groups;
+}
+
+function generateCatalogHtml(groups, totalCount, ts) {
+  let cards = "";
+  for (const [cat, skills] of Object.entries(groups)) {
+    const heading = cat.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    let rows = "";
+    for (const s of skills) {
+      const badge = sourceBadgeHtml(s.source);
+      let hint = "";
+      if (s.source) {
+        switch (s.source.type) {
+          case "superpowers":
+            hint = "Included with superpowers-skills";
+            break;
+          case "skills.sh":
+            hint = s.source.repo
+              ? `Installed via skills.sh (${esc(s.source.repo)})`
+              : "Installed via skills.sh";
+            break;
+          default:
+            hint = `Custom skill — copy from ~/.claude/skills/${esc(s.name)}/`;
+        }
+      }
+      rows += `
+      <div class="cat-skill">
+        <div class="cat-skill-head">
+          <span class="cat-skill-name">${esc(s.name)}</span>${badge}
+        </div>
+        <div class="cat-skill-desc">${esc(s.desc)}</div>
+        ${hint ? `<div class="cat-skill-hint">${hint}</div>` : ""}
+      </div>`;
+    }
+    cards += `
+    <section class="cat-group">
+      <h2>${esc(heading)} <span class="cat-n">${skills.length}</span></h2>
+      ${rows}
+    </section>`;
+  }
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Code Skill Catalog</title>
+<style>
+  :root {
+    --bg: #0a0a0a; --surface: #111; --surface2: #1a1a1a; --border: #262626;
+    --text: #e5e5e5; --text-dim: #777; --accent: #c4956a; --accent-dim: #8b6a4a;
+    --green: #4ade80; --blue: #60a5fa; --purple: #a78bfa; --yellow: #fbbf24;
+    --red: #f87171;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+    background: var(--bg); color: var(--text);
+    padding: 2.5rem 2rem; line-height: 1.5; max-width: 900px; margin: 0 auto;
+  }
+  code { font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace; }
+  h1 { font-size: 1.4rem; font-weight: 600; color: var(--accent); margin-bottom: .2rem; }
+  .sub { color: var(--text-dim); font-size: .78rem; margin-bottom: 2rem; }
+  .cat-group { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; margin-bottom: 1.25rem; }
+  .cat-group h2 { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim); margin-bottom: .75rem; display: flex; align-items: center; gap: .5rem; }
+  .cat-n { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: .05rem .35rem; font-size: .65rem; color: var(--accent); }
+  .cat-skill { padding: .5rem .25rem; border-bottom: 1px solid var(--border); }
+  .cat-skill:last-child { border-bottom: none; }
+  .cat-skill-head { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+  .cat-skill-name { font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace; font-weight: 600; color: var(--yellow); font-size: .82rem; }
+  .cat-skill-desc { color: var(--text-dim); font-size: .75rem; margin-top: .15rem; }
+  .cat-skill-hint { font-size: .65rem; color: var(--blue); margin-top: .2rem; opacity: .8; }
+  .badge { font-size: .55rem; padding: .1rem .35rem; border-radius: 3px; font-weight: 600; }
+  .badge.source.superpowers { background: rgba(167,139,250,.1); border: 1px solid rgba(167,139,250,.2); color: var(--purple); }
+  .badge.source.skillssh { background: rgba(96,165,250,.1); border: 1px solid rgba(96,165,250,.2); color: var(--blue); }
+  .badge.source.custom { background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.2); color: var(--yellow); }
+  @media (max-width: 600px) { body { padding: 1.5rem 1rem; } }
+</style>
+</head>
+<body>
+<h1>Claude Code Skill Catalog</h1>
+<div class="sub">${totalCount} skills &middot; generated ${esc(ts)}</div>
+${cards}
+</body>
+</html>`;
 }
 
 function renderBadges(repo) {
@@ -1177,6 +1325,8 @@ const html = `<!DOCTYPE html>
   @media (max-width: 900px) { .unconfigured-grid { grid-template-columns: repeat(2, 1fr); } }
   .unconfigured-item { font-size: .72rem; padding: .3rem .5rem; border-radius: 4px; background: var(--surface2); color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .unconfigured-item .upath { font-size: .6rem; color: #555; display: block; overflow: hidden; text-overflow: ellipsis; }
+  .suggestion-hints { display: flex; flex-wrap: wrap; gap: .2rem; margin-top: .25rem; }
+  .suggestion-hint { font-size: .5rem; padding: .08rem .3rem; border-radius: 2px; background: rgba(96,165,250,.08); border: 1px solid rgba(96,165,250,.15); color: var(--blue); }
 
   .ts { text-align: center; color: var(--text-dim); font-size: .65rem; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border); }
 </style>
@@ -1245,7 +1395,19 @@ ${
   <summary style="cursor:pointer;list-style:none"><h2 style="margin:0">Unconfigured Repos <span class="n">${unconfiguredCount}</span></h2></summary>
   <div style="margin-top:.75rem">
     <div class="unconfigured-grid">
-      ${unconfigured.map((r) => `<div class="unconfigured-item">${esc(r.name)}${r.techStack && r.techStack.length ? `<span class="stack-tag">${esc(r.techStack.join(", "))}</span>` : ""}<span class="upath">${esc(r.shortPath)}</span></div>`).join("\n      ")}
+      ${unconfigured
+        .map((r) => {
+          const stackTag =
+            r.techStack && r.techStack.length
+              ? `<span class="stack-tag">${esc(r.techStack.join(", "))}</span>`
+              : "";
+          const suggestionsHtml =
+            r.suggestions && r.suggestions.length
+              ? `<div class="suggestion-hints">${r.suggestions.map((s) => `<span class="suggestion-hint">${esc(s)}</span>`).join("")}</div>`
+              : "";
+          return `<div class="unconfigured-item">${esc(r.name)}${stackTag}<span class="upath">${esc(r.shortPath)}</span>${suggestionsHtml}</div>`;
+        })
+        .join("\n      ")}
     </div>
   </div>
 </details>`

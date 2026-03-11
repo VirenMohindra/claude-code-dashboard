@@ -354,7 +354,7 @@ describe("categorizeSkill()", () => {
 // ── CLI Argument Parsing ────────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const args = { output: "default.html", open: false, json: false };
+  const args = { output: "default.html", open: false, json: false, catalog: false };
   let i = 2;
   while (i < argv.length) {
     switch (argv[i]) {
@@ -375,6 +375,9 @@ function parseArgs(argv) {
         break;
       case "--json":
         args.json = true;
+        break;
+      case "--catalog":
+        args.catalog = true;
         break;
       default:
         args.error = argv[i];
@@ -405,6 +408,16 @@ describe("parseArgs()", () => {
   it("parses --open flag", () => {
     const args = parseArgs(["node", "script", "--open"]);
     assert.equal(args.open, true);
+  });
+
+  it("parses --catalog flag", () => {
+    const args = parseArgs(["node", "script", "--catalog"]);
+    assert.equal(args.catalog, true);
+  });
+
+  it("defaults catalog to false", () => {
+    const args = parseArgs(["node", "script"]);
+    assert.equal(args.catalog, false);
   });
 
   it("handles unknown flags", () => {
@@ -731,5 +744,106 @@ describe("computeDrift()", () => {
 
   it("includes commit count", () => {
     assert.equal(computeDrift(12).commitsSince, 12);
+  });
+});
+
+// ── Cross-Repo Suggestions ──────────────────────────────────────────────────
+
+// NOTE: The production findExemplar uses repo objects with .techStack (array)
+// and .healthScore (number). The production generateSuggestions uses
+// repo objects with .commands (array) and .rules (array), while this test
+// version uses .commandCount and .ruleCount (numbers) for simplicity.
+function findExemplar(stack, configuredRepos) {
+  if (!stack || stack.length === 0) return null;
+  let best = null;
+  let bestScore = -1;
+  for (const repo of configuredRepos) {
+    const repoStacks = repo.techStack || [];
+    const overlap = stack.filter((s) => repoStacks.includes(s)).length;
+    if (overlap > 0 && (repo.healthScore || 0) > bestScore) {
+      bestScore = repo.healthScore || 0;
+      best = repo;
+    }
+  }
+  return best;
+}
+
+function generateSuggestions(exemplar) {
+  if (!exemplar) return [];
+  const suggestions = [];
+  if (exemplar.hasAgentsFile) suggestions.push("add CLAUDE.md");
+  if (exemplar.commandCount > 0)
+    suggestions.push(`add commands (${exemplar.name} has ${exemplar.commandCount})`);
+  if (exemplar.ruleCount > 0)
+    suggestions.push(`add rules (${exemplar.name} has ${exemplar.ruleCount})`);
+  return suggestions;
+}
+
+describe("findExemplar()", () => {
+  const repos = [
+    { name: "app-a", techStack: ["next"], healthScore: 90 },
+    { name: "app-b", techStack: ["next"], healthScore: 60 },
+    { name: "app-c", techStack: ["python"], healthScore: 80 },
+  ];
+
+  it("finds highest-health repo matching stack", () => {
+    const result = findExemplar(["next"], repos);
+    assert.equal(result.name, "app-a");
+  });
+
+  it("returns null for no stack match", () => {
+    assert.equal(findExemplar(["rust"], repos), null);
+  });
+
+  it("returns null for empty stack", () => {
+    assert.equal(findExemplar([], repos), null);
+  });
+
+  it("returns null for null stack", () => {
+    assert.equal(findExemplar(null, repos), null);
+  });
+
+  it("matches on partial stack overlap", () => {
+    const result = findExemplar(["next", "react"], repos);
+    assert.equal(result.name, "app-a");
+  });
+});
+
+describe("generateSuggestions()", () => {
+  it("suggests based on exemplar config", () => {
+    const result = generateSuggestions({
+      name: "salsa",
+      hasAgentsFile: true,
+      commandCount: 2,
+      ruleCount: 3,
+    });
+    assert.ok(result.includes("add CLAUDE.md"));
+    assert.ok(result.some((s) => s.includes("commands")));
+    assert.ok(result.some((s) => s.includes("rules")));
+  });
+
+  it("returns empty for null exemplar", () => {
+    assert.deepEqual(generateSuggestions(null), []);
+  });
+
+  it("only suggests what exemplar has", () => {
+    const result = generateSuggestions({
+      name: "minimal",
+      hasAgentsFile: true,
+      commandCount: 0,
+      ruleCount: 0,
+    });
+    assert.equal(result.length, 1);
+    assert.equal(result[0], "add CLAUDE.md");
+  });
+
+  it("returns empty when exemplar has nothing", () => {
+    const result = generateSuggestions({
+      name: "bare",
+      hasAgentsFile: false,
+      commandCount: 0,
+      ruleCount: 0,
+    });
+    assert.deepEqual(result, []);
   });
 });
