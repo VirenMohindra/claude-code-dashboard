@@ -33,7 +33,7 @@ Scans your home directory for git repos, collects Claude Code configuration (com
 
 ### Dark mode
 
-![Dark Mode](screenshots/06-light-mode.png)
+![Dark Mode](screenshots/06-dark-mode.png)
 
 > Screenshots generated with `claude-code-dashboard --demo`
 
