@@ -35,76 +35,93 @@ export function getDesc(filepath) {
 }
 
 export function extractProjectDesc(filepath) {
+  let lines;
   try {
-    const content = readFileSync(filepath, "utf8");
-    const lines = content.split("\n");
-    const desc = [];
-
-    // YAML frontmatter description
-    if (lines[0] === "---") {
-      for (let i = 1; i < lines.length; i++) {
-        if (lines[i] === "---") break;
-        const m = lines[i].match(/^description:\s*(.+)/);
-        if (m) {
-          desc.push(m[1].trim());
-          return desc;
-        }
-      }
-    }
-
-    // First meaningful lines (skip headings, boilerplate)
-    for (const l of lines.slice(0, 10)) {
-      const t = l.trim();
-      if (!t || t.startsWith("#") || t.startsWith("```") || t === "---") continue;
-      if (BOILERPLATE_RE.test(t)) continue;
-      desc.push(t.length > 120 ? t.slice(0, 117) + "..." : t);
-      if (desc.length >= 2) break;
-    }
-    return desc;
+    lines = readFileSync(filepath, "utf8").split("\n");
   } catch {
     return [];
   }
+
+  const result = [];
+  let inCode = false;
+  let foundContent = false;
+
+  for (const line of lines) {
+    if (line.startsWith("```")) {
+      inCode = !inCode;
+      continue;
+    }
+    if (inCode) continue;
+    if (line.startsWith("# ") && result.length === 0) continue;
+    if (!line.trim() && !foundContent) continue;
+    if (line.startsWith("## ") && foundContent) break;
+    if (line.startsWith("## ") && !foundContent) continue;
+    if (BOILERPLATE_RE.test(line)) continue;
+    if (/^[^#|`]/.test(line) && line.trim().length > 5) {
+      foundContent = true;
+      result.push(line.replace(/\*\*/g, "").replace(/`/g, ""));
+      if (result.length >= 2) break;
+    }
+  }
+  return result;
 }
 
 export function extractSections(filepath) {
+  let lines;
   try {
-    const content = readFileSync(filepath, "utf8");
-    const lines = content.split("\n");
-    const sections = [];
-    let current = null;
-
-    for (const l of lines) {
-      const m = l.match(/^##\s+(.+)/);
-      if (m) {
-        if (current) sections.push(current);
-        current = { name: m[1].trim(), preview: [] };
-      } else if (current && current.preview.length < 3) {
-        const t = l.trim();
-        if (t && !t.startsWith("```")) current.preview.push(t);
-      }
-    }
-    if (current) sections.push(current);
-    return sections;
+    lines = readFileSync(filepath, "utf8").split("\n");
   } catch {
     return [];
   }
+
+  const sections = [];
+  let current = null;
+  let inCode = false;
+
+  for (const line of lines) {
+    if (line.startsWith("```")) {
+      inCode = !inCode;
+      continue;
+    }
+    if (inCode) continue;
+
+    if (line.startsWith("## ")) {
+      current = { name: line.slice(3), preview: [] };
+      sections.push(current);
+      continue;
+    }
+    if (current && current.preview.length < 3 && !line.startsWith("#") && line.trim()) {
+      let cleaned = line.replace(/\*\*/g, "").replace(/`/g, "").replace(/^- /, "");
+      if (cleaned.trim().length > 2) {
+        if (cleaned.length > 80) cleaned = cleaned.slice(0, 77) + "...";
+        current.preview.push(cleaned.trim());
+      }
+    }
+  }
+  return sections;
 }
 
 export function extractSteps(filepath) {
+  let lines;
   try {
-    const content = readFileSync(filepath, "utf8");
-    const steps = [];
-    for (const l of content.split("\n")) {
-      const t = l.trim();
-      if (!t) continue;
-      if (/^\d+\.\s/.test(t)) steps.push({ type: "step", text: t });
-      else if (t.startsWith("- ") || t.startsWith("* ")) steps.push({ type: "bullet", text: t });
-      else if (t.startsWith("> ")) steps.push({ type: "note", text: t.slice(2) });
-    }
-    return steps;
+    lines = readFileSync(filepath, "utf8").split("\n");
   } catch {
     return [];
   }
+
+  const steps = [];
+  for (const line of lines) {
+    if (line.startsWith("## ")) {
+      steps.push({ type: "section", text: line.slice(3) });
+    } else if (/^\d+\. /.test(line)) {
+      steps.push({ type: "step", text: line.replace(/^\d+\. /, "").replace(/\*\*/g, "") });
+    } else if (line.startsWith("- **")) {
+      const m = line.match(/^- \*\*([^*]+)\*\*/);
+      if (m) steps.push({ type: "key", text: m[1] });
+    }
+    if (steps.length >= 12) break;
+  }
+  return steps;
 }
 
 export function scanMdDir(dir) {
