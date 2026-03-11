@@ -1,5 +1,10 @@
 # claude-code-dashboard
 
+[![npm version](https://img.shields.io/npm/v/@viren/claude-code-dashboard)](https://www.npmjs.com/package/@viren/claude-code-dashboard)
+[![CI](https://github.com/VirenMohindra/claude-code-dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/VirenMohindra/claude-code-dashboard/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org)
+
 A visual dashboard for your [Claude Code](https://docs.anthropic.com/en/docs/claude-code) configuration across all repos.
 
 Scans your home directory for git repos, collects Claude Code configuration (commands, rules, skills, MCP servers, usage data), and generates a self-contained HTML dashboard.
