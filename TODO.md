@@ -65,26 +65,36 @@
 - [x] Suggest consolidating into global rules vs repo-specific rules
 - [x] Show "config similarity" between repos
 
-## v0.5.0 — Team & Design Polish
+## v0.5.0 — Control Center (complete)
 
 ### Design Improvements
 
-- [ ] Light/dark mode toggle
-- [ ] Group repos by parent directory or tech stack (toggleable)
-- [ ] Collapsible skill categories with counts
-- [ ] Full description on hover/expand (no more truncation)
-- [ ] Repo-to-skill mapping: "which skills are relevant to this repo?"
+- [x] Light/dark mode toggle with system preference detection + localStorage persistence
+- [x] Group repos by parent directory or tech stack (toggleable dropdown)
+- [x] Collapsible skill categories with counts (first open by default)
+- [x] Full description on expand (truncated preview hidden when card is open)
+- [x] Repo-to-skill mapping: matched skills shown in expanded repo cards
 
 ### Team Features
 
-- [ ] Org-wide dashboard: scan multiple users' configs (for teams sharing a machine or repo)
-- [ ] Export as shareable HTML with anonymized paths
-- [ ] Diff view: what changed since last generation (`--diff` flag)
-- [ ] Screenshot/demo GIF for README
+- [ ] Org-wide dashboard: scan multiple users' configs (deferred — needs multi-user architecture)
+- [x] Export as shareable HTML with anonymized paths (`--anonymize` flag)
+- [x] Diff view: what changed since last generation (`--diff` flag with snapshot persistence)
+- [ ] Screenshot/demo GIF for README (manual task)
 
 ### CLI Enhancements
 
-- [ ] `--watch` mode: regenerate on file changes
-- [ ] `--quiet` mode: suppress output, just write file
-- [ ] Config linting: detect contradictions, stale references, missing files
-- [ ] Bash/Zsh completion script
+- [x] `--watch` mode: regenerate on file changes (debounced, multi-root)
+- [x] `--quiet` mode: suppress output, just write file
+- [x] Config linting: `lint` subcommand detects TODO markers, missing CLAUDE.md, empty configs
+- [x] Bash/Zsh completion script (`--completions` flag)
+
+### New in v0.5.0 (beyond original roadmap)
+
+- [x] MCP server discovery: scans `~/.claude/mcp_config.json` + per-repo `.mcp.json` files
+- [x] MCP promotion hints: flags servers installed in 2+ projects but not globally
+- [x] MCP disabled server detection from `~/.claude.json`
+- [x] Usage analytics: top tools, languages from `~/.claude/usage-data/session-meta/`
+- [x] Activity heatmap: GitHub-style daily activity grid from `stats-cache.json`
+- [x] Peak hours chart + model usage breakdown
+- [x] Quick reference card: slash commands, tools, keyboard shortcuts

@@ -26,13 +26,14 @@ import {
   mkdirSync,
   lstatSync,
   readlinkSync,
+  watch as fsWatch,
 } from "fs";
 import { join, basename, dirname } from "path";
 import { homedir } from "os";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const VERSION = "0.4.0";
+const VERSION = "0.5.0";
 
 const HOME = homedir();
 const CLAUDE_DIR = join(HOME, ".claude");
@@ -102,10 +103,18 @@ function parseArgs(argv) {
     command: null,
     template: null,
     dryRun: false,
+    quiet: false,
+    watch: false,
+    diff: false,
+    anonymize: false,
+    completions: false,
   };
   let i = 2; // skip node + script
   if (argv[2] === "init") {
     args.command = "init";
+    i = 3;
+  } else if (argv[2] === "lint") {
+    args.command = "lint";
     i = 3;
   }
   while (i < argv.length) {
@@ -125,6 +134,11 @@ Options:
   --json               Output full data model as JSON instead of HTML
   --catalog            Generate a shareable skill catalog HTML page
   --open               Open the dashboard in your default browser after generating
+  --quiet              Suppress output, just write file
+  --watch              Regenerate on file changes
+  --diff               Show changes since last generation
+  --anonymize          Anonymize paths for shareable export
+  --completions        Output shell completion script for bash/zsh
   --version, -v        Show version
   --help, -h           Show this help
 
@@ -132,6 +146,7 @@ Subcommands:
   init                 Scaffold Claude Code config for current directory
     --template, -t <stack>  Override auto-detected stack (next, react, python, etc.)
     --dry-run               Preview what would be created without writing files
+  lint                 Check all repos for config issues
 
 Config file: ~/.claude/dashboard.conf
   Add directories (one per line) to restrict scanning scope.
@@ -174,6 +189,21 @@ Config file: ~/.claude/dashboard.conf
       case "--dry-run":
         args.dryRun = true;
         break;
+      case "--quiet":
+        args.quiet = true;
+        break;
+      case "--watch":
+        args.watch = true;
+        break;
+      case "--diff":
+        args.diff = true;
+        break;
+      case "--anonymize":
+        args.anonymize = true;
+        break;
+      case "--completions":
+        args.completions = true;
+        break;
       default:
         console.error(`Unknown option: ${argv[i]}\nRun with --help for usage.`);
         process.exit(1);
@@ -184,6 +214,23 @@ Config file: ~/.claude/dashboard.conf
 }
 
 const cliArgs = parseArgs(process.argv);
+
+// ── Shell Completions ───────────────────────────────────────────────────────
+
+if (cliArgs.completions) {
+  console.log(`# claude-code-dashboard completions
+# eval "$(claude-code-dashboard --completions)"
+if [ -n "$ZSH_VERSION" ]; then
+  _claude_code_dashboard() {
+    local -a opts; opts=(init lint --output --open --json --catalog --quiet --watch --diff --anonymize --completions --help --version)
+    if (( CURRENT == 2 )); then _describe 'option' opts; fi
+  }; compdef _claude_code_dashboard claude-code-dashboard
+elif [ -n "$BASH_VERSION" ]; then
+  _claude_code_dashboard() { COMPREPLY=( $(compgen -W "init lint --output --open --json --catalog --quiet --watch --diff --anonymize --completions --help --version" -- "\${COMP_WORDS[COMP_CWORD]}") ); }
+  complete -F _claude_code_dashboard claude-code-dashboard
+fi`);
+  process.exit(0);
+}
 
 // ── Tech Stack Detection (const, must precede init handler) ─────────────────
 
@@ -654,6 +701,50 @@ const CATEGORY_ORDER = [
   "project-specific",
 ];
 
+const QUICK_REFERENCE = {
+  essentialCommands: [
+    { cmd: "/help", desc: "Show help and available commands" },
+    { cmd: "/compact", desc: "Compact conversation to free context" },
+    { cmd: "/model", desc: "Switch AI model" },
+    { cmd: "/diff", desc: "Interactive diff viewer for changes" },
+    { cmd: "/status", desc: "Version, model, account info" },
+    { cmd: "/cost", desc: "Show token usage statistics" },
+    { cmd: "/plan", desc: "Enter plan mode for complex tasks" },
+    { cmd: "/config", desc: "Open settings interface" },
+    { cmd: "/mcp", desc: "Manage MCP server connections" },
+    { cmd: "/memory", desc: "Edit CLAUDE.md, toggle auto-memory" },
+    { cmd: "/permissions", desc: "View or update tool permissions" },
+    { cmd: "/init", desc: "Initialize project with CLAUDE.md" },
+    { cmd: "/insights", desc: "Generate usage analytics report" },
+    { cmd: "/export", desc: "Export conversation as plain text" },
+    { cmd: "/pr-comments", desc: "Fetch GitHub PR review comments" },
+    { cmd: "/doctor", desc: "Diagnose installation issues" },
+  ],
+  tools: [
+    { name: "Bash", desc: "Execute shell commands" },
+    { name: "Read", desc: "Read files (text, images, PDFs, notebooks)" },
+    { name: "Write", desc: "Create new files" },
+    { name: "Edit", desc: "Modify files via exact string replacement" },
+    { name: "Grep", desc: "Search file contents with regex" },
+    { name: "Glob", desc: "Find files by pattern" },
+    { name: "Agent", desc: "Launch specialized sub-agents" },
+    { name: "WebSearch", desc: "Search the web" },
+    { name: "WebFetch", desc: "Fetch URL content" },
+    { name: "LSP", desc: "Code intelligence (go-to-def, references)" },
+  ],
+  shortcuts: [
+    { keys: "/", desc: "Quick command search" },
+    { keys: "!", desc: "Bash mode (run directly)" },
+    { keys: "@", desc: "File path autocomplete" },
+    { keys: "Ctrl+C", desc: "Cancel generation" },
+    { keys: "Ctrl+L", desc: "Clear screen" },
+    { keys: "Ctrl+R", desc: "Search history" },
+    { keys: "Shift+Tab", desc: "Toggle permission mode" },
+    { keys: "Esc Esc", desc: "Rewind conversation" },
+    { keys: "Tab", desc: "Toggle thinking" },
+  ],
+};
+
 /**
  * Detect where a skill was sourced from:
  * - "superpowers" — tracked in the obra/superpowers-skills git repo
@@ -954,6 +1045,206 @@ function computeConfigSimilarity(repoA, repoB) {
   return total > 0 ? Math.round((matches / total) * 100) : 0;
 }
 
+// ── Repo-to-Skill Mapping ────────────────────────────────────────────────────
+
+function matchSkillsToRepo(repo, skills) {
+  if (!repo || !skills || skills.length === 0) return [];
+  const repoTokens = new Set();
+  for (const word of repo.name.toLowerCase().split(/[-_./]/)) {
+    if (word.length > 1) repoTokens.add(word);
+  }
+  for (const s of repo.techStack || []) {
+    repoTokens.add(s.toLowerCase());
+  }
+  for (const sec of repo.sections || []) {
+    const name = (sec.name || sec || "").toLowerCase();
+    for (const word of name.split(/\s+/)) {
+      if (word.length > 2) repoTokens.add(word);
+    }
+  }
+  const matched = [];
+  for (const skill of skills) {
+    const skillTokens = skill.name
+      .toLowerCase()
+      .split(/[-_./]/)
+      .filter((t) => t.length > 1);
+    const hits = skillTokens.filter((t) => repoTokens.has(t)).length;
+    if (hits > 0) matched.push({ name: skill.name, relevance: hits });
+  }
+  return matched.sort((a, b) => b.relevance - a.relevance).slice(0, 5);
+}
+
+// ── Config Linting ──────────────────────────────────────────────────────────
+
+function lintConfig(repo) {
+  const issues = [];
+  if (repo.sections) {
+    for (const sec of repo.sections) {
+      const name = sec.name || sec || "";
+      if (/TODO|FIXME|HACK/i.test(name)) {
+        issues.push({ level: "warn", message: `Section "${name}" contains TODO/FIXME marker` });
+      }
+    }
+  }
+  if (!repo.hasAgentsFile && (repo.commands.length > 0 || repo.rules.length > 0)) {
+    issues.push({ level: "info", message: "Has commands/rules but no CLAUDE.md" });
+  }
+  if (
+    repo.hasAgentsFile &&
+    repo.commands.length === 0 &&
+    repo.rules.length === 0 &&
+    repo.sections.length === 0
+  ) {
+    issues.push({
+      level: "warn",
+      message: "CLAUDE.md exists but has no commands, rules, or sections",
+    });
+  }
+  return issues;
+}
+
+// ── Path Anonymization ──────────────────────────────────────────────────────
+
+function anonymizePath(p) {
+  return p
+    .replace(/^\/Users\/[^/]+\//, "~/")
+    .replace(/^\/home\/[^/]+\//, "~/")
+    .replace(/^C:\\Users\\[^\\]+\\/, "~\\");
+}
+
+// ── Diff Computation ────────────────────────────────────────────────────────
+
+function computeDashboardDiff(prev, current) {
+  const diff = { added: [], removed: [], changed: [] };
+  if (!prev || !current) return diff;
+  const prevNames = new Set((prev.configuredRepos || []).map((r) => r.name));
+  const currNames = new Set((current.configuredRepos || []).map((r) => r.name));
+  for (const name of currNames) {
+    if (!prevNames.has(name)) diff.added.push(name);
+  }
+  for (const name of prevNames) {
+    if (!currNames.has(name)) diff.removed.push(name);
+  }
+  const prevMap = Object.fromEntries((prev.configuredRepos || []).map((r) => [r.name, r]));
+  const currMap = Object.fromEntries((current.configuredRepos || []).map((r) => [r.name, r]));
+  for (const name of currNames) {
+    if (
+      prevNames.has(name) &&
+      (prevMap[name].healthScore || 0) !== (currMap[name].healthScore || 0)
+    ) {
+      diff.changed.push({
+        name,
+        field: "healthScore",
+        from: prevMap[name].healthScore || 0,
+        to: currMap[name].healthScore || 0,
+      });
+    }
+  }
+  return diff;
+}
+
+// ── Usage Analytics ──────────────────────────────────────────────────────────
+
+function aggregateSessionMeta(sessions) {
+  if (!sessions || sessions.length === 0) {
+    return {
+      totalSessions: 0,
+      totalDuration: 0,
+      topTools: [],
+      topLanguages: [],
+      errorCategories: [],
+    };
+  }
+
+  let totalDuration = 0;
+  const toolCounts = {};
+  const langCounts = {};
+  const errorCounts = {};
+
+  for (const s of sessions) {
+    totalDuration += s.duration_minutes || 0;
+
+    if (s.tool_counts) {
+      for (const [name, count] of Object.entries(s.tool_counts)) {
+        toolCounts[name] = (toolCounts[name] || 0) + count;
+      }
+    }
+
+    if (s.languages) {
+      for (const [name, count] of Object.entries(s.languages)) {
+        langCounts[name] = (langCounts[name] || 0) + count;
+      }
+    }
+
+    if (s.tool_error_categories) {
+      for (const [name, count] of Object.entries(s.tool_error_categories)) {
+        errorCounts[name] = (errorCounts[name] || 0) + count;
+      }
+    }
+  }
+
+  const sortDesc = (obj, limit) =>
+    Object.entries(obj)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, limit);
+
+  return {
+    totalSessions: sessions.length,
+    totalDuration,
+    topTools: sortDesc(toolCounts, 10),
+    topLanguages: sortDesc(langCounts, 8),
+    errorCategories: sortDesc(errorCounts, 5),
+  };
+}
+
+// ── MCP Server Discovery ─────────────────────────────────────────────────────
+
+function parseUserMcpConfig(content) {
+  try {
+    const data = JSON.parse(content);
+    const servers = [];
+    const mcpServers = data.mcpServers || {};
+    for (const [name, cfg] of Object.entries(mcpServers)) {
+      const type = cfg.type || (cfg.command ? "stdio" : cfg.url ? "http" : "unknown");
+      servers.push({ name, type, scope: "user", source: "~/.claude/mcp_config.json" });
+    }
+    return servers;
+  } catch {
+    return [];
+  }
+}
+
+function parseProjectMcpConfig(content, repoPath) {
+  try {
+    const data = JSON.parse(content);
+    const servers = [];
+    const mcpServers = data.mcpServers || {};
+    for (const [name, cfg] of Object.entries(mcpServers)) {
+      const type = cfg.type || (cfg.command ? "stdio" : cfg.url ? "http" : "unknown");
+      servers.push({ name, type, scope: "project", source: repoPath });
+    }
+    return servers;
+  } catch {
+    return [];
+  }
+}
+
+function findPromotionCandidates(servers) {
+  const userLevel = new Set(servers.filter((s) => s.scope === "user").map((s) => s.name));
+  const projectServers = servers.filter((s) => s.scope === "project");
+  const byName = {};
+  for (const s of projectServers) {
+    if (userLevel.has(s.name)) continue;
+    if (!byName[s.name]) byName[s.name] = new Set();
+    byName[s.name].add(s.source);
+  }
+  return Object.entries(byName)
+    .filter(([, projects]) => projects.size >= 2)
+    .map(([name, projects]) => ({ name, projects: [...projects].sort() }))
+    .sort((a, b) => b.projects.length - a.projects.length || a.name.localeCompare(b.name));
+}
+
 // ── Freshness ───────────────────────────────────────────────────────────────
 
 function getFreshness(repoDir) {
@@ -1099,6 +1390,7 @@ for (const repo of configured) {
     .sort((a, b) => b.similarity - a.similarity)
     .slice(0, 2);
   repo.similarRepos = similar;
+  repo.matchedSkills = matchSkillsToRepo(repo, globalSkills);
 }
 
 // Detect consolidation opportunities
@@ -1150,6 +1442,115 @@ function parseChains() {
 }
 const chains = parseChains();
 
+// MCP Server Discovery
+const allMcpServers = [];
+
+// User-level MCP servers from ~/.claude/mcp_config.json
+const userMcpPath = join(CLAUDE_DIR, "mcp_config.json");
+if (existsSync(userMcpPath)) {
+  try {
+    const content = readFileSync(userMcpPath, "utf8");
+    allMcpServers.push(...parseUserMcpConfig(content));
+  } catch {
+    // skip if unreadable
+  }
+}
+
+// Project-level MCP servers from .mcp.json in each repo
+for (const repoDir of allRepoPaths) {
+  const mcpPath = join(repoDir, ".mcp.json");
+  if (existsSync(mcpPath)) {
+    try {
+      const content = readFileSync(mcpPath, "utf8");
+      const servers = parseProjectMcpConfig(content, shortPath(repoDir));
+      allMcpServers.push(...servers);
+      // Attach to repo objects
+      const repo =
+        configured.find((r) => r.path === repoDir) || unconfigured.find((r) => r.path === repoDir);
+      if (repo) repo.mcpServers = servers;
+    } catch {
+      // skip if unreadable
+    }
+  }
+}
+
+// Disabled MCP servers from ~/.claude.json
+const disabledMcpByRepo = {};
+const claudeJsonPath = join(HOME, ".claude.json");
+if (existsSync(claudeJsonPath)) {
+  try {
+    const claudeJsonContent = readFileSync(claudeJsonPath, "utf8");
+    const claudeJson = JSON.parse(claudeJsonContent);
+    for (const [path, entry] of Object.entries(claudeJson)) {
+      if (entry && Array.isArray(entry.disabledMcpServers) && entry.disabledMcpServers.length > 0) {
+        disabledMcpByRepo[path] = entry.disabledMcpServers;
+      }
+    }
+  } catch {
+    // skip if parse fails (JSON5-ish, trailing commas, etc.)
+  }
+}
+
+// Build MCP summary
+const mcpPromotions = findPromotionCandidates(allMcpServers);
+
+const disabledNames = new Set(Object.values(disabledMcpByRepo).flat());
+
+const mcpByName = {};
+for (const s of allMcpServers) {
+  if (!mcpByName[s.name])
+    mcpByName[s.name] = {
+      name: s.name,
+      type: s.type,
+      projects: [],
+      userLevel: false,
+      disabled: false,
+    };
+  if (s.scope === "user") mcpByName[s.name].userLevel = true;
+  if (s.scope === "project") mcpByName[s.name].projects.push(s.source);
+}
+for (const entry of Object.values(mcpByName)) {
+  if (disabledNames.has(entry.name)) entry.disabled = true;
+}
+const mcpSummary = Object.values(mcpByName).sort((a, b) => {
+  if (a.userLevel !== b.userLevel) return a.userLevel ? -1 : 1;
+  return a.name.localeCompare(b.name);
+});
+const mcpCount = mcpSummary.length;
+
+// ── Usage Analytics Data Collection ─────────────────────────────────────────
+
+// Session meta files from ~/.claude/usage-data/session-meta/*.json
+const sessionMetaDir = join(CLAUDE_DIR, "usage-data", "session-meta");
+const sessionMetaFiles = [];
+if (existsSync(sessionMetaDir)) {
+  try {
+    for (const f of readdirSync(sessionMetaDir)) {
+      if (!f.endsWith(".json")) continue;
+      try {
+        const content = readFileSync(join(sessionMetaDir, f), "utf8");
+        sessionMetaFiles.push(JSON.parse(content));
+      } catch {
+        // skip unparseable files
+      }
+    }
+  } catch {
+    // skip if directory unreadable
+  }
+}
+const usageAnalytics = aggregateSessionMeta(sessionMetaFiles);
+
+// Stats cache from ~/.claude/stats-cache.json
+const statsCachePath = join(CLAUDE_DIR, "stats-cache.json");
+let statsCache = {};
+if (existsSync(statsCachePath)) {
+  try {
+    statsCache = JSON.parse(readFileSync(statsCachePath, "utf8"));
+  } catch {
+    // skip if parse fails
+  }
+}
+
 // Stats
 const totalRepos = allRepoPaths.length;
 const configuredCount = configured.length;
@@ -1174,6 +1575,59 @@ const timestamp =
 
 const scanScope = existsSync(CONF) ? `config: ${shortPath(CONF)}` : "~/ (depth 5)";
 
+// ── Lint Subcommand ─────────────────────────────────────────────────────────
+
+if (cliArgs.command === "lint") {
+  let totalIssues = 0;
+  for (const repo of configured) {
+    const issues = lintConfig(repo);
+    if (issues.length === 0) continue;
+    console.log(`\n${repo.name} (${repo.shortPath}):`);
+    for (const issue of issues) {
+      console.log(`  ${issue.level === "warn" ? "WARN" : "INFO"}: ${issue.message}`);
+      totalIssues++;
+    }
+  }
+  if (totalIssues === 0) console.log("No config issues found.");
+  else console.log(`\n${totalIssues} issue(s) found.`);
+  process.exit(totalIssues > 0 ? 1 : 0);
+}
+
+// ── Anonymize Paths ─────────────────────────────────────────────────────────
+
+if (cliArgs.anonymize) {
+  for (const repo of [...configured, ...unconfigured]) {
+    repo.shortPath = anonymizePath(repo.shortPath);
+    repo.path = anonymizePath(repo.path);
+  }
+}
+
+// ── Dashboard Diff ──────────────────────────────────────────────────────────
+
+const SNAPSHOT_PATH = join(CLAUDE_DIR, "dashboard-snapshot.json");
+if (cliArgs.diff) {
+  const currentSnapshot = {
+    configuredRepos: configured.map((r) => ({ name: r.name, healthScore: r.healthScore || 0 })),
+  };
+  if (existsSync(SNAPSHOT_PATH)) {
+    try {
+      const prev = JSON.parse(readFileSync(SNAPSHOT_PATH, "utf8"));
+      const diff = computeDashboardDiff(prev, currentSnapshot);
+      console.log("Dashboard diff since last generation:");
+      if (diff.added.length) console.log(`  Added: ${diff.added.join(", ")}`);
+      if (diff.removed.length) console.log(`  Removed: ${diff.removed.join(", ")}`);
+      for (const c of diff.changed) console.log(`  ${c.name}: ${c.field} ${c.from} -> ${c.to}`);
+      if (!diff.added.length && !diff.removed.length && !diff.changed.length)
+        console.log("  No changes.");
+    } catch {
+      console.log("Previous snapshot unreadable, saving new baseline.");
+    }
+  } else {
+    console.log("No previous snapshot found, saving baseline.");
+  }
+  writeFileSync(SNAPSHOT_PATH, JSON.stringify(currentSnapshot, null, 2));
+}
+
 // ── JSON Output (short-circuit before HTML generation) ──────────────────────
 
 if (cliArgs.json) {
@@ -1192,6 +1646,7 @@ if (cliArgs.json) {
       repoCommands: totalRepoCmds,
       avgHealthScore: avgHealth,
       driftingRepos: driftCount,
+      mcpServers: mcpCount,
     },
     globalCommands: globalCmds.map((c) => ({ name: c.name, description: c.desc })),
     globalRules: globalRules.map((r) => ({ name: r.name, description: r.desc })),
@@ -1222,7 +1677,9 @@ if (cliArgs.json) {
       },
       drift: r.drift || { level: "unknown", commitsSince: 0 },
       configPattern: r.configPattern || "minimal",
+      matchedSkills: r.matchedSkills || [],
       similarRepos: r.similarRepos || [],
+      mcpServers: r.mcpServers || [],
     })),
     consolidationGroups,
     unconfiguredRepos: unconfigured.map((r) => ({
@@ -1231,7 +1688,10 @@ if (cliArgs.json) {
       techStack: r.techStack || [],
       suggestions: r.suggestions || [],
       exemplar: r.exemplarName || "",
+      mcpServers: r.mcpServers || [],
     })),
+    mcpServers: mcpSummary,
+    mcpPromotions,
   };
 
   const jsonOutput = JSON.stringify(jsonData, null, 2);
@@ -1239,7 +1699,7 @@ if (cliArgs.json) {
   if (cliArgs.output !== DEFAULT_OUTPUT) {
     mkdirSync(dirname(cliArgs.output), { recursive: true });
     writeFileSync(cliArgs.output, jsonOutput);
-    console.log(cliArgs.output);
+    if (!cliArgs.quiet) console.log(cliArgs.output);
   } else {
     process.stdout.write(jsonOutput + "\n");
   }
@@ -1256,7 +1716,7 @@ if (cliArgs.catalog) {
     cliArgs.output !== DEFAULT_OUTPUT ? cliArgs.output : join(CLAUDE_DIR, "skill-catalog.html");
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, catalogHtml);
-  console.log(outputPath);
+  if (!cliArgs.quiet) console.log(outputPath);
   if (cliArgs.open) {
     const cmd =
       process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
@@ -1391,6 +1851,12 @@ function generateCatalogHtml(groups, totalCount, ts) {
     --green: #4ade80; --blue: #60a5fa; --purple: #a78bfa; --yellow: #fbbf24;
     --red: #f87171;
   }
+  [data-theme="light"] {
+    --bg: #f5f5f5; --surface: #fff; --surface2: #f0f0f0; --border: #e0e0e0;
+    --text: #1a1a1a; --text-dim: #666; --accent: #9b6b47; --accent-dim: #b8956e;
+    --green: #16a34a; --blue: #2563eb; --purple: #7c3aed; --yellow: #ca8a04;
+    --red: #dc2626;
+  }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
@@ -1414,12 +1880,36 @@ function generateCatalogHtml(groups, totalCount, ts) {
   .badge.source.skillssh { background: rgba(96,165,250,.1); border: 1px solid rgba(96,165,250,.2); color: var(--blue); }
   .badge.source.custom { background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.2); color: var(--yellow); }
   @media (max-width: 600px) { body { padding: 1.5rem 1rem; } }
+  .theme-toggle {
+    position: fixed; top: 1rem; right: 1rem; z-index: 100;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: .4rem .6rem; cursor: pointer; color: var(--text-dim); font-size: .75rem;
+    transition: background .15s, border-color .15s;
+  }
+  .theme-toggle:hover { border-color: var(--accent-dim); }
+  .theme-icon::before { content: "\\263E"; }
+  [data-theme="light"] .theme-icon::before { content: "\\2600"; }
 </style>
 </head>
 <body>
 <h1>Claude Code Skill Catalog</h1>
+<button id="theme-toggle" class="theme-toggle" title="Toggle light/dark mode" aria-label="Toggle theme"><span class="theme-icon"></span></button>
 <div class="sub">${totalCount} skills &middot; generated ${esc(ts)}</div>
 ${cards}
+<script>
+var toggle = document.getElementById('theme-toggle');
+var saved = localStorage.getItem('ccd-theme');
+if (saved) document.documentElement.setAttribute('data-theme', saved);
+else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
+  document.documentElement.setAttribute('data-theme', 'light');
+}
+toggle.addEventListener('click', function() {
+  var current = document.documentElement.getAttribute('data-theme');
+  var next = current === 'light' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('ccd-theme', next);
+});
+</script>
 </body>
 </html>`;
 }
@@ -1486,12 +1976,21 @@ function renderRepoCard(repo) {
     body += repo.rules.map((r) => renderRule(r)).join("");
   }
 
+  if (repo.matchedSkills && repo.matchedSkills.length) {
+    body += `<div class="label">Relevant Skills</div>`;
+    body += `<div class="matched-skills">${repo.matchedSkills
+      .map((m) => `<span class="matched-skill">${esc(m.name)}</span>`)
+      .join("")}</div>`;
+  }
+
   if (repo.sections.length) {
     body += `<div class="label">Agent Config</div>`;
     body += renderSections(repo.sections);
   }
 
-  return `<details class="repo-card" data-name="${esc(repo.name)}" data-path="${esc(repo.shortPath)}" data-stack="${esc((repo.techStack || []).join(","))}">
+  const parent = repo.shortPath.split("/").slice(0, -1).join("/");
+
+  return `<details class="repo-card" data-name="${esc(repo.name)}" data-path="${esc(repo.shortPath)}" data-stack="${esc((repo.techStack || []).join(","))}" data-parent="${esc(parent)}">
   <summary>
     <div class="repo-header">
       <div class="repo-name">${esc(repo.name)}<span class="freshness-dot ${repo.freshnessClass}"></span></div>
@@ -1515,6 +2014,12 @@ const html = `<!DOCTYPE html>
     --text: #e5e5e5; --text-dim: #777; --accent: #c4956a; --accent-dim: #8b6a4a;
     --green: #4ade80; --blue: #60a5fa; --purple: #a78bfa; --yellow: #fbbf24;
     --red: #f87171;
+  }
+  [data-theme="light"] {
+    --bg: #f5f5f5; --surface: #fff; --surface2: #f0f0f0; --border: #e0e0e0;
+    --text: #1a1a1a; --text-dim: #666; --accent: #9b6b47; --accent-dim: #b8956e;
+    --green: #16a34a; --blue: #2563eb; --purple: #7c3aed; --yellow: #ca8a04;
+    --red: #dc2626;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -1630,6 +2135,50 @@ const html = `<!DOCTYPE html>
   .skill-category-label { font-size: .6rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); padding: .3rem 0; margin-bottom: .25rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: .4rem; }
   .skill-category-label .cat-n { font-size: .55rem; color: var(--accent-dim); }
 
+  .mcp-row { display: flex; align-items: center; gap: .5rem; padding: .3rem .25rem; border-bottom: 1px solid var(--border); font-size: .8rem; flex-wrap: wrap; }
+  .mcp-row:last-child { border-bottom: none; }
+  .mcp-row.mcp-disabled { opacity: .4; }
+  .mcp-name { font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace; font-weight: 600; color: var(--text); font-size: .78rem; }
+  .mcp-projects { font-size: .65rem; color: var(--text-dim); margin-left: auto; }
+  .badge.mcp-global { color: var(--green); border-color: #4ade8033; background: #4ade8010; }
+  .badge.mcp-project { color: var(--blue); border-color: #60a5fa33; background: #60a5fa10; }
+  .badge.mcp-type { color: var(--text-dim); border-color: var(--border); background: var(--surface2); text-transform: none; font-size: .5rem; }
+  .mcp-promote { font-size: .72rem; color: var(--text-dim); padding: .4rem .5rem; background: rgba(251,191,36,.05); border: 1px solid rgba(251,191,36,.15); border-radius: 6px; margin-top: .3rem; }
+  .mcp-promote .mcp-name { color: var(--yellow); }
+  .mcp-promote code { font-size: .65rem; color: var(--accent); }
+
+  .usage-bar-row { display: flex; align-items: center; gap: .5rem; padding: .25rem 0; font-size: .75rem; }
+  .usage-bar-label { width: 100px; flex-shrink: 0; color: var(--text); font-weight: 500; font-size: .72rem; }
+  .usage-bar-track { flex: 1; height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
+  .usage-bar-fill { height: 100%; border-radius: 4px; transition: width .3s; }
+  .usage-bar-tool { background: linear-gradient(90deg, var(--blue), var(--green)); }
+  .usage-bar-lang { background: linear-gradient(90deg, var(--green), var(--accent)); }
+  .usage-bar-count { font-size: .65rem; color: var(--text-dim); min-width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
+
+  .heatmap { display: inline-grid; grid-template-rows: repeat(7, 10px); grid-auto-flow: column; grid-auto-columns: 10px; gap: 2px; }
+  .heatmap-cell { width: 10px; height: 10px; border-radius: 2px; background: var(--surface2); }
+  .heatmap-cell.l1 { background: #0e4429; }
+  .heatmap-cell.l2 { background: #006d32; }
+  .heatmap-cell.l3 { background: #26a641; }
+  .heatmap-cell.l4 { background: #39d353; }
+  [data-theme="light"] .heatmap-cell.l1 { background: #9be9a8; }
+  [data-theme="light"] .heatmap-cell.l2 { background: #40c463; }
+  [data-theme="light"] .heatmap-cell.l3 { background: #30a14e; }
+  [data-theme="light"] .heatmap-cell.l4 { background: #216e39; }
+
+  .heatmap-months { display: flex; font-size: .5rem; color: var(--text-dim); margin-bottom: .2rem; }
+  .heatmap-month { flex: 1; }
+
+  .peak-hours { display: flex; align-items: flex-end; gap: 2px; height: 40px; }
+  .peak-bar { flex: 1; background: var(--purple); border-radius: 2px 2px 0 0; min-width: 4px; opacity: .7; }
+  .peak-labels { display: flex; gap: 2px; font-size: .45rem; color: var(--text-dim); }
+  .peak-label { flex: 1; text-align: center; min-width: 4px; }
+
+  .model-row { display: flex; justify-content: space-between; padding: .2rem 0; font-size: .72rem; border-bottom: 1px solid var(--border); }
+  .model-row:last-child { border-bottom: none; }
+  .model-name { color: var(--text); font-weight: 500; }
+  .model-tokens { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+
   .health-bar { height: 4px; background: var(--surface2); border-radius: 2px; margin: .4rem 0 .5rem; position: relative; overflow: hidden; }
   .health-fill { height: 100%; border-radius: 2px; transition: width .3s; }
   .health-label { position: absolute; right: 0; top: -14px; font-size: .55rem; color: var(--text-dim); }
@@ -1640,6 +2189,8 @@ const html = `<!DOCTYPE html>
   .drift-high { color: var(--red); }
   .quick-wins { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: .5rem; }
   .quick-win { font-size: .6rem; padding: .15rem .4rem; border-radius: 3px; background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.2); color: var(--yellow); }
+  .matched-skills { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: .5rem; }
+  .matched-skill { font-size: .6rem; padding: .12rem .4rem; border-radius: 3px; background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.2); color: var(--yellow); font-family: 'SF Mono', monospace; }
   .consolidation-hint { padding: .45rem .6rem; background: var(--surface2); border-radius: 6px; margin-top: .4rem; display: flex; align-items: baseline; gap: .5rem; }
   .consolidation-hint:first-child { margin-top: 0; }
   .consolidation-stack { font-size: .7rem; font-weight: 600; color: var(--accent); white-space: nowrap; }
@@ -1669,10 +2220,42 @@ const html = `<!DOCTYPE html>
   .suggestion-hint { font-size: .5rem; padding: .08rem .3rem; border-radius: 2px; background: rgba(96,165,250,.08); border: 1px solid rgba(96,165,250,.15); color: var(--blue); }
 
   .ts { text-align: center; color: var(--text-dim); font-size: .65rem; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+
+  .theme-toggle {
+    position: fixed; top: 1rem; right: 1rem; z-index: 100;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: .4rem .6rem; cursor: pointer; color: var(--text-dim); font-size: .75rem;
+    transition: background .15s, border-color .15s;
+  }
+  .theme-toggle:hover { border-color: var(--accent-dim); }
+  .theme-icon::before { content: "\\263E"; }
+  [data-theme="light"] .theme-icon::before { content: "\\2600"; }
+
+  .ref-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+  @media (max-width: 700px) { .ref-grid { grid-template-columns: 1fr; } }
+  .ref-row { display: flex; align-items: baseline; gap: .5rem; padding: .2rem 0; font-size: .72rem; }
+  .ref-cmd { font-size: .7rem; color: var(--green); white-space: nowrap; min-width: 100px; }
+  .ref-key { min-width: 90px; font-size: .65rem; }
+  .ref-desc { color: var(--text-dim); font-size: .68rem; }
+
+  details.skill-category > summary { cursor: pointer; list-style: none; }
+  details.skill-category > summary::-webkit-details-marker { display: none; }
+  details.skill-category > summary:hover { color: var(--accent); }
+  details.skill-category[open] > summary { color: var(--blue); }
+
+  .group-controls { display: flex; align-items: center; gap: .5rem; margin-bottom: 1rem; }
+  .group-label { font-size: .7rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em; }
+  .group-select { font-size: .75rem; padding: .3rem .5rem; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; outline: none; font-family: inherit; }
+  .group-select:focus { border-color: var(--accent-dim); }
+  .group-heading { font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); padding: .5rem 0 .25rem; margin-top: .75rem; border-bottom: 1px solid var(--border); grid-column: 1 / -1; }
+
+  .repo-card[open] .repo-preview { display: none; }
+  details.cmd-detail[open] .cmd-desc { white-space: normal; text-overflow: unset; overflow: visible; }
 </style>
 </head>
 <body>
 <h1>claude code dashboard</h1>
+<button id="theme-toggle" class="theme-toggle" title="Toggle light/dark mode" aria-label="Toggle theme"><span class="theme-icon"></span></button>
 <p class="sub">generated ${timestamp} · run <code>claude-code-dashboard</code> to refresh · click to expand</p>
 
 <div class="stats">
@@ -1681,6 +2264,7 @@ const html = `<!DOCTYPE html>
   <div class="stat"><b>${globalCmds.length}</b><span>Global Commands</span></div>
   <div class="stat"><b>${globalSkills.length}</b><span>Skills</span></div>
   <div class="stat"><b>${totalRepoCmds}</b><span>Repo Commands</span></div>
+  ${mcpCount > 0 ? `<div class="stat"><b>${mcpCount}</b><span>MCP Servers</span></div>` : ""}
   ${driftCount > 0 ? `<div class="stat" style="border-color:#f8717133"><b style="color:var(--red)">${driftCount}</b><span>Drifting Repos</span></div>` : ""}
 </div>
 
@@ -1699,8 +2283,11 @@ ${
         const groups = groupSkillsByCategory(globalSkills);
         const categoryHtml = Object.entries(groups)
           .map(
-            ([cat, skills]) =>
-              `<div class="skill-category"><div class="skill-category-label">${esc(cat)} <span class="cat-n">${skills.length}</span></div>${skills.map((s) => renderSkill(s)).join("\n    ")}</div>`,
+            ([cat, skills], idx) =>
+              `<details class="skill-category"${idx === 0 ? " open" : ""}>` +
+              `<summary class="skill-category-label">${esc(cat)} <span class="cat-n">${skills.length}</span></summary>` +
+              skills.map((s) => renderSkill(s)).join("\n    ") +
+              `</details>`,
           )
           .join("\n  ");
         return `<div class="card full">
@@ -1710,6 +2297,207 @@ ${
       })()
     : ""
 }
+${
+  mcpSummary.length
+    ? (() => {
+        const rows = mcpSummary
+          .map((s) => {
+            const disabledClass = s.disabled ? " mcp-disabled" : "";
+            const scopeBadge = s.userLevel
+              ? `<span class="badge mcp-global">global</span>`
+              : `<span class="badge mcp-project">project</span>`;
+            const typeBadge = `<span class="badge mcp-type">${esc(s.type)}</span>`;
+            const projects = s.projects.length
+              ? `<span class="mcp-projects">${s.projects.map((p) => esc(p)).join(", ")}</span>`
+              : "";
+            return `<div class="mcp-row${disabledClass}"><span class="mcp-name">${esc(s.name)}</span>${scopeBadge}${typeBadge}${projects}</div>`;
+          })
+          .join("\n    ");
+        const promoteHtml = mcpPromotions.length
+          ? mcpPromotions
+              .map(
+                (p) =>
+                  `<div class="mcp-promote"><span class="mcp-name">${esc(p.name)}</span> installed in ${p.projects.length} projects &rarr; add to <code>~/.claude/mcp_config.json</code></div>`,
+              )
+              .join("\n    ")
+          : "";
+        return `<div class="card full">
+  <h2>MCP Servers <span class="n">${mcpSummary.length}</span></h2>
+  ${rows}
+  ${promoteHtml}
+</div>`;
+      })()
+    : ""
+}
+${
+  usageAnalytics.topTools.length
+    ? (() => {
+        const maxCount = usageAnalytics.topTools[0].count;
+        const rows = usageAnalytics.topTools
+          .map((t) => {
+            const pct = maxCount > 0 ? Math.round((t.count / maxCount) * 100) : 0;
+            return `<div class="usage-bar-row"><span class="usage-bar-label">${esc(t.name)}</span><div class="usage-bar-track"><div class="usage-bar-fill usage-bar-tool" style="width:${pct}%"></div></div><span class="usage-bar-count">${t.count.toLocaleString()}</span></div>`;
+          })
+          .join("\n    ");
+        return `<div class="card">
+  <h2>Top Tools Used <span class="n">${usageAnalytics.topTools.length}</span></h2>
+  ${rows}
+</div>`;
+      })()
+    : ""
+}
+${
+  usageAnalytics.topLanguages.length
+    ? (() => {
+        const maxCount = usageAnalytics.topLanguages[0].count;
+        const rows = usageAnalytics.topLanguages
+          .map((l) => {
+            const pct = maxCount > 0 ? Math.round((l.count / maxCount) * 100) : 0;
+            return `<div class="usage-bar-row"><span class="usage-bar-label">${esc(l.name)}</span><div class="usage-bar-track"><div class="usage-bar-fill usage-bar-lang" style="width:${pct}%"></div></div><span class="usage-bar-count">${l.count.toLocaleString()}</span></div>`;
+          })
+          .join("\n    ");
+        return `<div class="card">
+  <h2>Languages <span class="n">${usageAnalytics.topLanguages.length}</span></h2>
+  ${rows}
+</div>`;
+      })()
+    : ""
+}
+${(() => {
+  const dailyActivity = statsCache.dailyActivity || [];
+  const hourCounts = statsCache.hourCounts || {};
+  const modelUsage = statsCache.modelUsage || {};
+  const hasActivity = dailyActivity.length > 0;
+  const hasHours = Object.keys(hourCounts).length > 0;
+  const hasModels = Object.keys(modelUsage).length > 0;
+
+  if (!hasActivity && !hasHours && !hasModels) return "";
+
+  let content = "";
+
+  // Activity heatmap
+  if (hasActivity) {
+    const dateMap = new Map(dailyActivity.map((d) => [d.date, d.messageCount || 0]));
+    const dates = dailyActivity.map((d) => d.date).sort();
+    const firstDate = new Date(dates[0]);
+    const lastDate = new Date(dates[dates.length - 1]);
+
+    // Compute thresholds (quartiles of non-zero days)
+    const nonZero = dailyActivity
+      .map((d) => d.messageCount || 0)
+      .filter((n) => n > 0)
+      .sort((a, b) => a - b);
+    const q1 = nonZero[Math.floor(nonZero.length * 0.25)] || 1;
+    const q2 = nonZero[Math.floor(nonZero.length * 0.5)] || 2;
+    const q3 = nonZero[Math.floor(nonZero.length * 0.75)] || 3;
+
+    function level(count) {
+      if (count === 0) return "";
+      if (count <= q1) return " l1";
+      if (count <= q2) return " l2";
+      if (count <= q3) return " l3";
+      return " l4";
+    }
+
+    // Generate cells from first Sunday before firstDate to lastDate
+    const start = new Date(firstDate);
+    start.setDate(start.getDate() - start.getDay()); // align to Sunday
+
+    // Month labels
+    const months = [];
+    let lastMonth = -1;
+    const cursor1 = new Date(start);
+    let weekIdx = 0;
+    while (cursor1 <= lastDate) {
+      if (cursor1.getDay() === 0) {
+        const m = cursor1.getMonth();
+        if (m !== lastMonth) {
+          months.push({ name: cursor1.toLocaleString("en", { month: "short" }), week: weekIdx });
+          lastMonth = m;
+        }
+        weekIdx++;
+      }
+      cursor1.setDate(cursor1.getDate() + 1);
+    }
+    const totalWeeks = weekIdx;
+    const monthLabels = months
+      .map((m) => {
+        const left = totalWeeks > 0 ? Math.round((m.week / totalWeeks) * 100) : 0;
+        return `<span class="heatmap-month" style="position:absolute;left:${left}%">${m.name}</span>`;
+      })
+      .join("");
+
+    let cells = "";
+    const cursor2 = new Date(start);
+    while (cursor2 <= lastDate) {
+      const key = cursor2.toISOString().slice(0, 10);
+      const count = dateMap.get(key) || 0;
+      cells += `<div class="heatmap-cell${level(count)}" title="${key}: ${count} messages"></div>`;
+      cursor2.setDate(cursor2.getDate() + 1);
+    }
+
+    content += `<div class="label">Activity</div>
+      <div style="position:relative;margin-bottom:.5rem">
+        <div class="heatmap-months" style="position:relative;height:.8rem">${monthLabels}</div>
+        <div style="overflow-x:auto"><div class="heatmap">${cells}</div></div>
+      </div>`;
+  }
+
+  // Peak hours
+  if (hasHours) {
+    const maxHour = Math.max(...Object.values(hourCounts), 1);
+    let bars = "";
+    let labels = "";
+    for (let h = 0; h < 24; h++) {
+      const count = hourCounts[String(h)] || 0;
+      const pct = Math.round((count / maxHour) * 100);
+      bars += `<div class="peak-bar" style="height:${Math.max(pct, 2)}%" title="${h}:00 — ${count} messages"></div>`;
+      labels += `<div class="peak-label">${h % 6 === 0 ? h : ""}</div>`;
+    }
+    content += `<div class="label" style="margin-top:.75rem">Peak Hours</div>
+      <div class="peak-hours">${bars}</div>
+      <div class="peak-labels">${labels}</div>`;
+  }
+
+  // Model usage
+  if (hasModels) {
+    const modelRows = Object.entries(modelUsage)
+      .map(([name, usage]) => {
+        const total = (usage.inputTokens || 0) + (usage.outputTokens || 0);
+        return { name, total };
+      })
+      .sort((a, b) => b.total - a.total)
+      .map(
+        (m) =>
+          `<div class="model-row"><span class="model-name">${esc(m.name)}</span><span class="model-tokens">${m.total.toLocaleString()} tokens</span></div>`,
+      )
+      .join("\n      ");
+    content += `<div class="label" style="margin-top:.75rem">Model Usage</div>
+      ${modelRows}`;
+  }
+
+  return `<div class="card full">
+  <h2>Activity</h2>
+  ${content}
+</div>`;
+})()}
+<details class="card full">
+  <summary style="cursor:pointer;list-style:none"><h2 style="margin:0">Quick Reference</h2></summary>
+  <div style="margin-top:.75rem">
+    <div class="ref-grid">
+      <div class="ref-col">
+        <div class="label">Essential Commands</div>
+        ${QUICK_REFERENCE.essentialCommands.map((c) => `<div class="ref-row"><code class="ref-cmd">${esc(c.cmd)}</code><span class="ref-desc">${esc(c.desc)}</span></div>`).join("\n        ")}
+      </div>
+      <div class="ref-col">
+        <div class="label">Built-in Tools</div>
+        ${QUICK_REFERENCE.tools.map((t) => `<div class="ref-row"><code class="ref-cmd">${esc(t.name)}</code><span class="ref-desc">${esc(t.desc)}</span></div>`).join("\n        ")}
+        <div class="label" style="margin-top:.75rem">Keyboard Shortcuts</div>
+        ${QUICK_REFERENCE.shortcuts.map((s) => `<div class="ref-row"><kbd class="ref-key">${esc(s.keys)}</kbd><span class="ref-desc">${esc(s.desc)}</span></div>`).join("\n        ")}
+      </div>
+    </div>
+  </div>
+</details>
 ${
   chains.length
     ? `<div class="card full">
@@ -1732,6 +2520,14 @@ ${
 <div class="search-bar">
   <input type="text" id="search" placeholder="search repos..." autocomplete="off">
   <span class="search-hint"><kbd>/</kbd></span>
+</div>
+<div class="group-controls">
+  <label class="group-label">Group by:</label>
+  <select id="group-by" class="group-select">
+    <option value="none">None</option>
+    <option value="stack">Tech Stack</option>
+    <option value="parent">Parent Directory</option>
+  </select>
 </div>
 
 <div class="repo-grid" id="repo-grid">
@@ -1791,6 +2587,44 @@ document.addEventListener('keydown', function(e) {
     input.blur();
   }
 });
+
+var toggle = document.getElementById('theme-toggle');
+var saved = localStorage.getItem('ccd-theme');
+if (saved) document.documentElement.setAttribute('data-theme', saved);
+else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
+  document.documentElement.setAttribute('data-theme', 'light');
+}
+toggle.addEventListener('click', function() {
+  var current = document.documentElement.getAttribute('data-theme');
+  var next = current === 'light' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('ccd-theme', next);
+});
+
+var groupSelect = document.getElementById('group-by');
+groupSelect.addEventListener('change', function() {
+  var mode = this.value;
+  var grid = document.getElementById('repo-grid');
+  grid.querySelectorAll('.group-heading').forEach(function(h) { h.remove(); });
+  var cards = Array.from(grid.querySelectorAll('.repo-card'));
+  if (mode === 'none') {
+    cards.forEach(function(c) { grid.appendChild(c); });
+    return;
+  }
+  var groups = {};
+  cards.forEach(function(card) {
+    var key = mode === 'stack' ? (card.dataset.stack || 'undetected') : (card.dataset.parent || '~/');
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(card);
+  });
+  Object.keys(groups).sort().forEach(function(key) {
+    var h = document.createElement('div');
+    h.className = 'group-heading';
+    h.textContent = key || '(none)';
+    grid.appendChild(h);
+    groups[key].forEach(function(card) { grid.appendChild(card); });
+  });
+});
 </script>
 </body>
 </html>`;
@@ -1800,11 +2634,40 @@ document.addEventListener('keydown', function(e) {
 const outputPath = cliArgs.output;
 mkdirSync(dirname(outputPath), { recursive: true });
 writeFileSync(outputPath, html);
-console.log(outputPath);
+if (!cliArgs.quiet) console.log(outputPath);
 
 if (cliArgs.open) {
   // Cross-platform open
   const cmd =
     process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
   execFile(cmd, [outputPath]);
+}
+
+// ── Watch Mode ──────────────────────────────────────────────────────────────
+
+if (cliArgs.watch) {
+  if (!cliArgs.quiet) console.log("Watching for changes...");
+  let debounce = null;
+  const watchDirs = [CLAUDE_DIR, ...scanRoots.slice(0, 5)];
+  function regenerate() {
+    if (debounce) globalThis.clearTimeout(debounce);
+    debounce = globalThis.setTimeout(() => {
+      if (!cliArgs.quiet) console.log("Change detected, regenerating...");
+      try {
+        execFileSync(process.execPath, [process.argv[1], "--output", outputPath, "--quiet"], {
+          stdio: "inherit",
+        });
+        if (!cliArgs.quiet) console.log(outputPath);
+      } catch (e) {
+        console.error("Regeneration failed:", e.message);
+      }
+    }, 500);
+  }
+  for (const dir of watchDirs) {
+    try {
+      fsWatch(dir, { recursive: true }, regenerate);
+    } catch {
+      /* unreadable */
+    }
+  }
 }
