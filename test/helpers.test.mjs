@@ -246,10 +246,12 @@ describe("freshness number parsing", () => {
 
 // ── Skill Categorization ──────────────────────────────────────────────────────
 
+// NOTE: These must match the SKILL_CATEGORIES in generate-dashboard.mjs exactly.
+// If the production categories change, update this copy to match.
 const SKILL_CATEGORIES = {
-  workflow: ["plan", "workflow", "branch", "commit", "pr ", "review", "ship", "deploy", "execute"],
-  "code-quality": ["lint", "test", "quality", "format", "refactor", "clean", "verify", "tdd"],
-  debugging: ["debug", "fix", "error", "diagnose", "troubleshoot", "log", "ci-fix"],
+  workflow: ["plan", "workflow", "branch", "commit", "pr-", "review", "ship", "deploy", "execute"],
+  "code-quality": ["lint", "test-", "quality", "format", "refactor", "clean", "verify", "tdd"],
+  debugging: ["debug", "diagnose", "troubleshoot", "ci-fix", "stack-trace", "breakpoint"],
   research: [
     "research",
     "search",
@@ -262,7 +264,7 @@ const SKILL_CATEGORIES = {
     "find",
   ],
   integrations: ["slack", "github", "figma", "linear", "jira", "notion", "snowflake", "api", "mcp"],
-  "project-specific": ["pepper", "mneme", "detail", "storybook", "react-native", "blog"],
+  "project-specific": ["storybook", "react-native"],
 };
 
 function categorizeSkill(name, content) {
@@ -591,28 +593,55 @@ describe("computeHealthScore()", () => {
 
 // ── Tech Stack Detection ────────────────────────────────────────────────────
 
-function detectTechStack(files) {
-  const stacks = [];
+// NOTE: This mirrors the production STACK_FILES map in generate-dashboard.mjs.
+// The production detectTechStack(repoDir) reads the filesystem; this version
+// accepts a Set of filenames and optional deps object for unit testing the
+// classification logic without I/O.
+const STACK_FILES = {
+  "next.config.js": "next",
+  "next.config.mjs": "next",
+  "next.config.ts": "next",
+  "Cargo.toml": "rust",
+  "go.mod": "go",
+  "requirements.txt": "python",
+  "pyproject.toml": "python",
+  "setup.py": "python",
+  "Package.swift": "swift",
+  Gemfile: "ruby",
+  "pom.xml": "java",
+  "build.gradle": "java",
+  "build.gradle.kts": "java",
+};
 
-  if (files.includes("package.json")) {
-    if (files.includes("next.config")) stacks.push("next");
-    else if (files.includes("expo")) stacks.push("expo");
-    else if (files.includes("react")) stacks.push("react");
-    else stacks.push("node");
+function detectTechStack(fileNames, deps = {}) {
+  const entries = new Set(fileNames);
+  const stacks = new Set();
+
+  for (const [file, stack] of Object.entries(STACK_FILES)) {
+    if (entries.has(file)) stacks.add(stack);
   }
-  if (files.includes("Cargo.toml")) stacks.push("rust");
-  if (files.includes("go.mod")) stacks.push("go");
-  if (files.includes("requirements.txt") || files.includes("pyproject.toml")) stacks.push("python");
-  if (files.includes("Package.swift")) stacks.push("swift");
-  if (files.includes("Gemfile")) stacks.push("ruby");
-  if (files.includes("pom.xml") || files.includes("build.gradle")) stacks.push("java");
 
-  return stacks;
+  if (entries.has("package.json")) {
+    if (!stacks.has("next") && !stacks.has("expo")) {
+      if (deps["expo"]) stacks.add("expo");
+      else if (deps["next"]) stacks.add("next");
+      else if (deps["react"]) stacks.add("react");
+    }
+    if (stacks.size === 0) stacks.add("node");
+  }
+
+  return [...stacks];
 }
 
 describe("detectTechStack()", () => {
-  it("detects Next.js", () => {
-    assert.deepEqual(detectTechStack(["package.json", "next.config"]), ["next"]);
+  it("detects Next.js from config file", () => {
+    const result = detectTechStack(["package.json", "next.config.mjs"]);
+    assert.ok(result.includes("next"));
+  });
+
+  it("detects Next.js from package.json deps", () => {
+    const result = detectTechStack(["package.json"], { next: "14.0.0" });
+    assert.ok(result.includes("next"));
   });
 
   it("detects plain node", () => {
@@ -636,52 +665,71 @@ describe("detectTechStack()", () => {
   });
 
   it("detects multiple stacks", () => {
-    const result = detectTechStack(["package.json", "go.mod"]);
-    assert.ok(result.includes("node"));
+    const result = detectTechStack(["Cargo.toml", "go.mod"]);
+    assert.ok(result.includes("rust"));
     assert.ok(result.includes("go"));
+  });
+
+  it("does not add node when another stack is detected from package.json", () => {
+    // go.mod + package.json → go only (not also node)
+    const result = detectTechStack(["package.json", "go.mod"]);
+    assert.ok(result.includes("go"));
+    assert.ok(!result.includes("node"));
   });
 
   it("returns empty for unknown project", () => {
     assert.deepEqual(detectTechStack(["README.md"]), []);
   });
+
+  it("detects Expo from deps", () => {
+    const result = detectTechStack(["package.json"], { expo: "50.0.0" });
+    assert.ok(result.includes("expo"));
+  });
+
+  it("detects React from deps", () => {
+    const result = detectTechStack(["package.json"], { react: "18.0.0" });
+    assert.ok(result.includes("react"));
+  });
+
+  it("does not false-positive app.json as Expo", () => {
+    // app.json alone should not trigger Expo detection
+    const result = detectTechStack(["app.json", "package.json"]);
+    assert.ok(!result.includes("expo"));
+    assert.ok(result.includes("node"));
+  });
 });
 
 // ── Drift Detection ─────────────────────────────────────────────────────────
 
-function computeDrift(configTimestamp, lastCommitTimestamp, commitsSinceConfig) {
-  if (!configTimestamp || !lastCommitTimestamp) return { level: "unknown", commitsSince: 0 };
-
-  if (commitsSinceConfig === 0) return { level: "synced", commitsSince: 0 };
-  if (commitsSinceConfig <= 5) return { level: "low", commitsSince: commitsSinceConfig };
-  if (commitsSinceConfig <= 20) return { level: "medium", commitsSince: commitsSinceConfig };
-  return { level: "high", commitsSince: commitsSinceConfig };
+// NOTE: The production computeDrift(repoDir, configTimestamp) calls git internally.
+// This tests the threshold logic only, using pre-computed commitsSince values.
+// The git integration path (rev-list --count, empty string guard, off-by-one)
+// is verified via the generation dry run in CI.
+function computeDrift(commitsSince) {
+  if (commitsSince === 0) return { level: "synced", commitsSince: 0 };
+  if (commitsSince <= 5) return { level: "low", commitsSince };
+  if (commitsSince <= 20) return { level: "medium", commitsSince };
+  return { level: "high", commitsSince };
 }
 
 describe("computeDrift()", () => {
-  const now = Math.floor(Date.now() / 1000);
-
   it("returns synced when no commits since config", () => {
-    const result = computeDrift(now - 100, now, 0);
-    assert.equal(result.level, "synced");
+    assert.equal(computeDrift(0).level, "synced");
   });
 
   it("returns low for 1-5 commits", () => {
-    assert.equal(computeDrift(now - 1000, now, 3).level, "low");
+    assert.equal(computeDrift(3).level, "low");
   });
 
   it("returns medium for 6-20 commits", () => {
-    assert.equal(computeDrift(now - 10000, now, 12).level, "medium");
+    assert.equal(computeDrift(12).level, "medium");
   });
 
   it("returns high for 20+ commits", () => {
-    assert.equal(computeDrift(now - 100000, now, 45).level, "high");
-  });
-
-  it("returns unknown when no config timestamp", () => {
-    assert.equal(computeDrift(0, now, 5).level, "unknown");
+    assert.equal(computeDrift(45).level, "high");
   });
 
   it("includes commit count", () => {
-    assert.equal(computeDrift(now - 1000, now, 12).commitsSince, 12);
+    assert.equal(computeDrift(12).commitsSince, 12);
   });
 });
