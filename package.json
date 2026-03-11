@@ -32,7 +32,8 @@
     "url": "https://github.com/VirenMohindra/claude-code-dashboard"
   },
   "files": [
-    "generate-dashboard.mjs"
+    "generate-dashboard.mjs",
+    "src/"
   ],
   "devDependencies": {
     "eslint": "^9.0.0",

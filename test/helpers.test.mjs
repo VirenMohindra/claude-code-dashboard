@@ -1,22 +1,33 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readdirSync, readFileSync, statSync } from "fs";
-import { join } from "path";
 
-// We test the pure functions by importing the module's logic.
-// Since the main script runs side effects on import, we extract testable
-// functions into this test by re-implementing the pure helpers here and
-// verifying they match the expected behavior.
+// Now that pure functions live in src/ modules (no side effects on import),
+// we import them directly instead of re-implementing them here.
+import { esc, anonymizePath } from "../src/helpers.mjs";
+import { relativeTime, freshnessClass } from "../src/freshness.mjs";
+import { ONE_DAY, THIRTY_DAYS, NINETY_DAYS, ONE_YEAR } from "../src/constants.mjs";
+import { getDescFromContent } from "../src/markdown.mjs";
+import { categorizeSkill } from "../src/skills.mjs";
+import {
+  computeHealthScore,
+  findExemplar,
+  generateSuggestions,
+  detectConfigPattern,
+  computeConfigSimilarity,
+  matchSkillsToRepo,
+  lintConfig,
+  computeDashboardDiff,
+} from "../src/analysis.mjs";
+import { aggregateSessionMeta } from "../src/usage.mjs";
+import {
+  parseUserMcpConfig,
+  parseProjectMcpConfig,
+  findPromotionCandidates,
+  scanHistoricalMcpServers,
+} from "../src/mcp.mjs";
+import { sourceBadgeHtml } from "../src/render.mjs";
 
 // ── HTML Escaping ────────────────────────────────────────────────────────────
-
-const esc = (s) =>
-  s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 
 describe("esc()", () => {
   it("escapes ampersands", () => {
@@ -49,30 +60,6 @@ describe("esc()", () => {
 });
 
 // ── Freshness ────────────────────────────────────────────────────────────────
-
-const ONE_DAY = 86_400;
-const TWO_DAYS = 172_800;
-const THIRTY_DAYS = 2_592_000;
-const NINETY_DAYS = 7_776_000;
-const ONE_YEAR = 31_536_000;
-
-function relativeTime(ts) {
-  if (!ts) return "unknown";
-  const diff = Math.floor(Date.now() / 1000) - ts;
-  if (diff < ONE_DAY) return "today";
-  if (diff < TWO_DAYS) return "yesterday";
-  if (diff < THIRTY_DAYS) return `${Math.floor(diff / ONE_DAY)}d ago`;
-  if (diff < ONE_YEAR) return `${Math.floor(diff / THIRTY_DAYS)}mo ago`;
-  return `${Math.floor(diff / ONE_YEAR)}y ago`;
-}
-
-function freshnessClass(ts) {
-  if (!ts) return "stale";
-  const diff = Math.floor(Date.now() / 1000) - ts;
-  if (diff < THIRTY_DAYS) return "fresh";
-  if (diff < NINETY_DAYS) return "aging";
-  return "stale";
-}
 
 describe("relativeTime()", () => {
   const now = Math.floor(Date.now() / 1000);
@@ -127,57 +114,35 @@ describe("freshnessClass()", () => {
 
 // ── Markdown Parsing ─────────────────────────────────────────────────────────
 
-// Simulate getDesc logic
-function getDesc(content) {
-  const lines = content.split("\n");
-
-  if (lines[0] === "---") {
-    for (let i = 1; i < lines.length; i++) {
-      if (lines[i] === "---") break;
-      const m = lines[i].match(/^description:\s*(.+)/);
-      if (m) return m[1].trim();
-    }
-  }
-
-  if (lines[0]?.startsWith("# ")) return lines[0].slice(2);
-
-  for (const l of lines.slice(0, 5)) {
-    const t = l.trim();
-    if (t && t !== "---" && !t.startsWith("```")) {
-      return t.length > 60 ? t.slice(0, 57) + "..." : t;
-    }
-  }
-  return "";
-}
-
 describe("getDesc()", () => {
   it("extracts YAML frontmatter description", () => {
     const md = "---\ndescription: My cool tool\n---\n# Title";
-    assert.equal(getDesc(md), "My cool tool");
+    assert.equal(getDescFromContent(md), "My cool tool");
   });
 
   it("extracts # heading", () => {
-    assert.equal(getDesc("# My Project\nSome text"), "My Project");
+    assert.equal(getDescFromContent("# My Project\nSome text"), "My Project");
   });
 
   it("falls back to first non-empty line", () => {
-    assert.equal(getDesc("\n\nSome intro text"), "Some intro text");
+    assert.equal(getDescFromContent("\n\nSome intro text"), "Some intro text");
   });
 
   it("truncates long first lines", () => {
     const long = "A".repeat(80);
-    const result = getDesc(long);
+    const result = getDescFromContent(long);
     assert.equal(result.length, 60);
     assert.ok(result.endsWith("..."));
   });
 
   it("returns empty for empty content", () => {
-    assert.equal(getDesc(""), "");
+    assert.equal(getDescFromContent(""), "");
   });
 });
 
 // ── Config Parsing ───────────────────────────────────────────────────────────
 
+// Local implementation: takes content string directly (production reads from file)
 function parseChains(content) {
   const chains = [];
   for (const line of content.split("\n")) {
@@ -236,7 +201,6 @@ describe("freshness number parsing", () => {
   it("returns 0 for empty string", () => {
     const ts = "";
     const parsed = Number(ts);
-    // Number("") is 0 which is falsy, so the || 0 fallback works
     const result = Number.isFinite(parsed) ? parsed : 0;
     assert.equal(result, 0);
   });
@@ -256,45 +220,6 @@ describe("freshness number parsing", () => {
 });
 
 // ── Skill Categorization ──────────────────────────────────────────────────────
-
-// NOTE: These must match the SKILL_CATEGORIES in generate-dashboard.mjs exactly.
-// If the production categories change, update this copy to match.
-const SKILL_CATEGORIES = {
-  workflow: ["plan", "workflow", "branch", "commit", "pr-", "review", "ship", "deploy", "execute"],
-  "code-quality": ["lint", "test-", "quality", "format", "refactor", "clean", "verify", "tdd"],
-  debugging: ["debug", "diagnose", "troubleshoot", "ci-fix", "stack-trace", "breakpoint"],
-  research: [
-    "research",
-    "search",
-    "analyze",
-    "explore",
-    "investigate",
-    "compare",
-    "competitive",
-    "audit",
-    "find",
-  ],
-  integrations: ["slack", "github", "figma", "linear", "jira", "notion", "snowflake", "api", "mcp"],
-  "project-specific": ["storybook", "react-native"],
-};
-
-function categorizeSkill(name, content) {
-  const nameLower = name.toLowerCase();
-  const contentLower = content.toLowerCase();
-  let bestCategory = "workflow";
-  let bestScore = 0;
-
-  for (const [category, keywords] of Object.entries(SKILL_CATEGORIES)) {
-    const nameScore = keywords.reduce((sum, kw) => sum + (nameLower.includes(kw) ? 3 : 0), 0);
-    const contentScore = keywords.reduce((sum, kw) => sum + (contentLower.includes(kw) ? 1 : 0), 0);
-    const score = nameScore + contentScore;
-    if (score > bestScore) {
-      bestScore = score;
-      bestCategory = category;
-    }
-  }
-  return bestCategory;
-}
 
 describe("categorizeSkill()", () => {
   it("categorizes debugging skills", () => {
@@ -364,6 +289,8 @@ describe("categorizeSkill()", () => {
 
 // ── CLI Argument Parsing ────────────────────────────────────────────────────
 
+// Local implementation: doesn't call process.exit() for --help/--version/errors,
+// making it testable without process termination.
 function parseArgs(argv) {
   const args = {
     output: "default.html",
@@ -549,20 +476,6 @@ describe("parseArgs()", () => {
 // ── Skill Source Badge Rendering ────────────────────────────────────────────
 
 describe("skill source badge rendering", () => {
-  function sourceBadgeHtml(source) {
-    if (!source) return "";
-    switch (source.type) {
-      case "superpowers":
-        return `<span class="badge source superpowers">superpowers</span>`;
-      case "skills.sh": {
-        const label = source.repo ? `skills.sh · ${source.repo}` : "skills.sh";
-        return `<span class="badge source skillssh">${label}</span>`;
-      }
-      default:
-        return `<span class="badge source custom">custom</span>`;
-    }
-  }
-
   it("renders superpowers badge", () => {
     const html = sourceBadgeHtml({ type: "superpowers", repo: "obra/superpowers-skills" });
     assert.ok(html.includes("superpowers"));
@@ -571,7 +484,8 @@ describe("skill source badge rendering", () => {
 
   it("renders skills.sh badge with repo", () => {
     const html = sourceBadgeHtml({ type: "skills.sh", repo: "storybookjs/react-native" });
-    assert.ok(html.includes("skills.sh · storybookjs/react-native"));
+    assert.ok(html.includes("skills.sh"));
+    assert.ok(html.includes("storybookjs/react-native"));
   });
 
   it("renders custom badge", () => {
@@ -585,58 +499,6 @@ describe("skill source badge rendering", () => {
 });
 
 // ── Config Health Score ─────────────────────────────────────────────────────
-
-function computeHealthScore(repo) {
-  let score = 0;
-  const reasons = [];
-
-  // Has AGENTS.md/CLAUDE.md (30 points)
-  if (repo.hasAgentsFile) {
-    score += 30;
-  } else {
-    reasons.push("add CLAUDE.md");
-  }
-
-  // Has description (10 points)
-  if (repo.desc && repo.desc.length > 0) {
-    score += 10;
-  } else {
-    reasons.push("add project description");
-  }
-
-  // Has commands (20 points)
-  if (repo.commandCount > 0) {
-    score += Math.min(20, repo.commandCount * 10);
-  } else {
-    reasons.push("add commands");
-  }
-
-  // Has rules (20 points)
-  if (repo.ruleCount > 0) {
-    score += Math.min(20, repo.ruleCount * 10);
-  } else {
-    reasons.push("add rules");
-  }
-
-  // Has sections / structured config (10 points)
-  if (repo.sectionCount > 0) {
-    score += Math.min(10, repo.sectionCount * 2);
-  } else {
-    reasons.push("add structured sections");
-  }
-
-  // Freshness (10 points)
-  if (repo.freshnessClass === "fresh") {
-    score += 10;
-  } else if (repo.freshnessClass === "aging") {
-    score += 5;
-    reasons.push("update config (aging)");
-  } else {
-    reasons.push("update config (stale)");
-  }
-
-  return { score: Math.min(100, score), reasons };
-}
 
 describe("computeHealthScore()", () => {
   it("scores a fully configured repo at 100", () => {
@@ -726,10 +588,8 @@ describe("computeHealthScore()", () => {
 
 // ── Tech Stack Detection ────────────────────────────────────────────────────
 
-// NOTE: This mirrors the production STACK_FILES map in generate-dashboard.mjs.
-// The production detectTechStack(repoDir) reads the filesystem; this version
-// accepts a Set of filenames and optional deps object for unit testing the
-// classification logic without I/O.
+// Local implementation: accepts (fileNames, deps) instead of (repoDir) to test
+// classification logic without filesystem I/O.
 const STACK_FILES = {
   "next.config.js": "next",
   "next.config.mjs": "next",
@@ -804,7 +664,6 @@ describe("detectTechStack()", () => {
   });
 
   it("does not add node when another stack is detected from package.json", () => {
-    // go.mod + package.json → go only (not also node)
     const result = detectTechStack(["package.json", "go.mod"]);
     assert.ok(result.includes("go"));
     assert.ok(!result.includes("node"));
@@ -825,7 +684,6 @@ describe("detectTechStack()", () => {
   });
 
   it("does not false-positive app.json as Expo", () => {
-    // app.json alone should not trigger Expo detection
     const result = detectTechStack(["app.json", "package.json"]);
     assert.ok(!result.includes("expo"));
     assert.ok(result.includes("node"));
@@ -834,10 +692,8 @@ describe("detectTechStack()", () => {
 
 // ── Drift Detection ─────────────────────────────────────────────────────────
 
-// NOTE: The production computeDrift(repoDir, configTimestamp) calls git internally.
-// This tests the threshold logic only, using pre-computed commitsSince values.
-// The git integration path (rev-list --count, empty string guard, off-by-one)
-// is verified via the generation dry run in CI.
+// Local implementation: accepts (commitsSince) instead of (repoDir, configTimestamp)
+// to test threshold logic without running git commands.
 function computeDrift(commitsSince) {
   if (commitsSince === 0) return { level: "synced", commitsSince: 0 };
   if (commitsSince <= 5) return { level: "low", commitsSince };
@@ -868,36 +724,6 @@ describe("computeDrift()", () => {
 });
 
 // ── Cross-Repo Suggestions ──────────────────────────────────────────────────
-
-// NOTE: These must match the production functions in generate-dashboard.mjs.
-// The only divergence is that production reads from the filesystem (repo objects
-// built during scanning), while tests pass pre-built objects directly.
-function findExemplar(stack, configuredRepos) {
-  if (!stack || stack.length === 0) return null;
-  let best = null;
-  let bestScore = -1;
-  for (const repo of configuredRepos) {
-    const repoStacks = repo.techStack || [];
-    const overlap = stack.filter((s) => repoStacks.includes(s)).length;
-    const score = overlap * 100 + (repo.healthScore || 0);
-    if (overlap > 0 && score > bestScore) {
-      bestScore = score;
-      best = repo;
-    }
-  }
-  return best;
-}
-
-function generateSuggestions(exemplar) {
-  if (!exemplar) return [];
-  const suggestions = [];
-  if (exemplar.hasAgentsFile) suggestions.push("add CLAUDE.md");
-  if (exemplar.commands?.length > 0)
-    suggestions.push(`add commands (${exemplar.name} has ${exemplar.commands.length})`);
-  if (exemplar.rules?.length > 0)
-    suggestions.push(`add rules (${exemplar.name} has ${exemplar.rules.length})`);
-  return suggestions;
-}
 
 describe("findExemplar()", () => {
   const repos = [
@@ -979,13 +805,6 @@ describe("generateSuggestions()", () => {
 
 // ── Config Pattern Detection ────────────────────────────────────────────────
 
-function detectConfigPattern(repo) {
-  if (repo.rules.length >= 3) return "modular";
-  if (repo.sections.length >= 3) return "monolithic";
-  if (repo.commands.length >= 2 && repo.sections.length === 0) return "command-heavy";
-  return "minimal";
-}
-
 describe("detectConfigPattern()", () => {
   it("detects modular pattern", () => {
     assert.equal(detectConfigPattern({ rules: [1, 2, 3], sections: [], commands: [] }), "modular");
@@ -1018,39 +837,6 @@ describe("detectConfigPattern()", () => {
 });
 
 // ── Config Similarity ───────────────────────────────────────────────────────
-
-function computeConfigSimilarity(repoA, repoB) {
-  if (!repoA || !repoB) return 0;
-  let matches = 0;
-  let total = 0;
-
-  const sectionsA = new Set((repoA.sections || []).map((s) => s.name || s));
-  const sectionsB = new Set((repoB.sections || []).map((s) => s.name || s));
-  if (sectionsA.size > 0 || sectionsB.size > 0) {
-    const intersection = [...sectionsA].filter((s) => sectionsB.has(s)).length;
-    const union = new Set([...sectionsA, ...sectionsB]).size;
-    matches += intersection;
-    total += union;
-  }
-
-  const stackA = new Set(repoA.techStack || []);
-  const stackB = new Set(repoB.techStack || []);
-  if (stackA.size > 0 || stackB.size > 0) {
-    const intersection = [...stackA].filter((s) => stackB.has(s)).length;
-    const union = new Set([...stackA, ...stackB]).size;
-    matches += intersection;
-    total += union;
-  }
-
-  if (repoA.configPattern && repoA.configPattern === repoB.configPattern) {
-    matches += 1;
-    total += 1;
-  } else {
-    total += 1;
-  }
-
-  return total > 0 ? Math.round((matches / total) * 100) : 0;
-}
 
 describe("computeConfigSimilarity()", () => {
   it("returns 100 for identical repos", () => {
@@ -1096,69 +882,6 @@ describe("computeConfigSimilarity()", () => {
 });
 
 // ── Usage Analytics ─────────────────────────────────────────────────────────
-
-// NOTE: This must match the production aggregateSessionMeta in generate-dashboard.mjs.
-// Re-implemented here because the main script runs side effects on import.
-function aggregateSessionMeta(sessions) {
-  if (!sessions || sessions.length === 0) {
-    return {
-      totalSessions: 0,
-      totalDuration: 0,
-      topTools: [],
-      topLanguages: [],
-      errorCategories: [],
-      heavySessions: 0,
-    };
-  }
-
-  let totalDuration = 0;
-  const toolCounts = {};
-  const langCounts = {};
-  const errorCounts = {};
-
-  for (const s of sessions) {
-    totalDuration += s.duration_minutes || 0;
-
-    if (s.tool_counts) {
-      for (const [name, count] of Object.entries(s.tool_counts)) {
-        toolCounts[name] = (toolCounts[name] || 0) + count;
-      }
-    }
-
-    if (s.languages) {
-      for (const [name, count] of Object.entries(s.languages)) {
-        langCounts[name] = (langCounts[name] || 0) + count;
-      }
-    }
-
-    if (s.tool_error_categories) {
-      for (const [name, count] of Object.entries(s.tool_error_categories)) {
-        errorCounts[name] = (errorCounts[name] || 0) + count;
-      }
-    }
-  }
-
-  let heavySessions = 0;
-  for (const s of sessions) {
-    const msgs = (s.user_message_count || 0) + (s.assistant_message_count || 0);
-    if (msgs > 50 || (s.duration_minutes || 0) > 30) heavySessions++;
-  }
-
-  const sortDesc = (obj, limit) =>
-    Object.entries(obj)
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, limit);
-
-  return {
-    totalSessions: sessions.length,
-    totalDuration,
-    topTools: sortDesc(toolCounts, 10),
-    topLanguages: sortDesc(langCounts, 8),
-    errorCategories: sortDesc(errorCounts, 5),
-    heavySessions,
-  };
-}
 
 describe("aggregateSessionMeta()", () => {
   it("aggregates tool counts across sessions", () => {
@@ -1216,7 +939,6 @@ describe("aggregateSessionMeta()", () => {
     const result = aggregateSessionMeta(sessions);
     assert.equal(result.topTools.length, 10);
     assert.equal(result.topLanguages.length, 8);
-    // Verify sorted descending
     assert.equal(result.topTools[0].count, 100);
     assert.equal(result.topTools[9].count, 91);
     assert.equal(result.topLanguages[0].count, 50);
@@ -1314,53 +1036,6 @@ describe("aggregateSessionMeta()", () => {
 });
 
 // ── MCP Server Discovery ─────────────────────────────────────────────────────
-
-// NOTE: These must match the production functions in generate-dashboard.mjs.
-
-function parseUserMcpConfig(content) {
-  try {
-    const data = JSON.parse(content);
-    const servers = [];
-    const mcpServers = data.mcpServers || {};
-    for (const [name, cfg] of Object.entries(mcpServers)) {
-      const type = cfg.type || (cfg.command ? "stdio" : cfg.url ? "http" : "unknown");
-      servers.push({ name, type, scope: "user", source: "~/.claude/mcp_config.json" });
-    }
-    return servers;
-  } catch {
-    return [];
-  }
-}
-
-function parseProjectMcpConfig(content, repoPath) {
-  try {
-    const data = JSON.parse(content);
-    const servers = [];
-    const mcpServers = data.mcpServers || {};
-    for (const [name, cfg] of Object.entries(mcpServers)) {
-      const type = cfg.type || (cfg.command ? "stdio" : cfg.url ? "http" : "unknown");
-      servers.push({ name, type, scope: "project", source: repoPath });
-    }
-    return servers;
-  } catch {
-    return [];
-  }
-}
-
-function findPromotionCandidates(servers) {
-  const userLevel = new Set(servers.filter((s) => s.scope === "user").map((s) => s.name));
-  const projectServers = servers.filter((s) => s.scope === "project");
-  const byName = {};
-  for (const s of projectServers) {
-    if (userLevel.has(s.name)) continue;
-    if (!byName[s.name]) byName[s.name] = new Set();
-    byName[s.name].add(s.source);
-  }
-  return Object.entries(byName)
-    .filter(([, projects]) => projects.size >= 2)
-    .map(([name, projects]) => ({ name, projects: [...projects].sort() }))
-    .sort((a, b) => b.projects.length - a.projects.length || a.name.localeCompare(b.name));
-}
 
 describe("parseUserMcpConfig()", () => {
   it("parses stdio server from user config", () => {
@@ -1557,76 +1232,13 @@ describe("findPromotionCandidates()", () => {
 
 // ── Historical MCP Server Scanning ─────────────────────────────────────────
 
-// NOTE: Must match production scanHistoricalMcpServers in generate-dashboard.mjs.
-
-function scanHistoricalMcpServers(claudeDir) {
-  const historical = new Set();
-  const fileHistoryDir = join(claudeDir, "file-history");
-  if (!existsSync(fileHistoryDir)) return [];
-  try {
-    for (const sessionDir of readdirSync(fileHistoryDir)) {
-      const sessionPath = join(fileHistoryDir, sessionDir);
-      if (!statSync(sessionPath).isDirectory()) continue;
-      try {
-        for (const snapFile of readdirSync(sessionPath)) {
-          const snapPath = join(sessionPath, snapFile);
-          try {
-            const content = readFileSync(snapPath, "utf8");
-            if (!content.includes("mcpServers")) continue;
-            const data = JSON.parse(content);
-            for (const name of Object.keys(data.mcpServers || {})) {
-              historical.add(name);
-            }
-          } catch {
-            /* skip malformed */
-          }
-        }
-      } catch {
-        /* skip unreadable session dir */
-      }
-    }
-  } catch {
-    /* skip unreadable file-history dir */
-  }
-  return [...historical];
-}
-
 describe("scanHistoricalMcpServers()", () => {
-  // We test with a mock since file-history is user-specific
   it("returns empty for nonexistent dir", () => {
     assert.deepEqual(scanHistoricalMcpServers("/nonexistent"), []);
   });
 });
 
 // ── Repo-to-Skill Mapping ──────────────────────────────────────────────────
-
-// NOTE: Must match production matchSkillsToRepo in generate-dashboard.mjs.
-function matchSkillsToRepo(repo, skills) {
-  if (!repo || !skills || skills.length === 0) return [];
-  const repoTokens = new Set();
-  for (const word of repo.name.toLowerCase().split(/[-_./]/)) {
-    if (word.length > 1) repoTokens.add(word);
-  }
-  for (const s of repo.techStack || []) {
-    repoTokens.add(s.toLowerCase());
-  }
-  for (const sec of repo.sections || []) {
-    const name = (sec.name || sec || "").toLowerCase();
-    for (const word of name.split(/\s+/)) {
-      if (word.length > 2) repoTokens.add(word);
-    }
-  }
-  const matched = [];
-  for (const skill of skills) {
-    const skillTokens = skill.name
-      .toLowerCase()
-      .split(/[-_./]/)
-      .filter((t) => t.length > 1);
-    const hits = skillTokens.filter((t) => repoTokens.has(t)).length;
-    if (hits > 0) matched.push({ name: skill.name, relevance: hits });
-  }
-  return matched.sort((a, b) => b.relevance - a.relevance).slice(0, 5);
-}
 
 describe("matchSkillsToRepo()", () => {
   const skills = [
@@ -1666,34 +1278,6 @@ describe("matchSkillsToRepo()", () => {
 
 // ── Config Linting ──────────────────────────────────────────────────────────
 
-// NOTE: Must match production lintConfig in generate-dashboard.mjs.
-function lintConfig(repo) {
-  const issues = [];
-  if (repo.sections) {
-    for (const sec of repo.sections) {
-      const name = sec.name || sec || "";
-      if (/TODO|FIXME|HACK/i.test(name)) {
-        issues.push({ level: "warn", message: `Section "${name}" contains TODO/FIXME marker` });
-      }
-    }
-  }
-  if (!repo.hasAgentsFile && (repo.commands.length > 0 || repo.rules.length > 0)) {
-    issues.push({ level: "info", message: "Has commands/rules but no CLAUDE.md" });
-  }
-  if (
-    repo.hasAgentsFile &&
-    repo.commands.length === 0 &&
-    repo.rules.length === 0 &&
-    repo.sections.length === 0
-  ) {
-    issues.push({
-      level: "warn",
-      message: "CLAUDE.md exists but has no commands, rules, or sections",
-    });
-  }
-  return issues;
-}
-
 describe("lintConfig()", () => {
   it("flags TODO in section names", () => {
     const repo = {
@@ -1728,15 +1312,6 @@ describe("lintConfig()", () => {
 
 // ── Path Anonymization ──────────────────────────────────────────────────────
 
-// NOTE: Must match production anonymizePath in generate-dashboard.mjs.
-function anonymizePath(p) {
-  return p
-    .replace(/^\/Users\/[^/]+\//, "~/")
-    .replace(/^\/home\/[^/]+\//, "~/")
-    .replace(/^C:\\Users\\[^\\]+\\/, "~\\")
-    .replace(/^C:\/Users\/[^/]+\//, "~/");
-}
-
 describe("anonymizePath()", () => {
   it("anonymizes macOS paths", () => {
     assert.equal(anonymizePath("/Users/john/projects/app"), "~/projects/app");
@@ -1752,36 +1327,6 @@ describe("anonymizePath()", () => {
 });
 
 // ── Diff Computation ────────────────────────────────────────────────────────
-
-// NOTE: Must match production computeDashboardDiff in generate-dashboard.mjs.
-function computeDashboardDiff(prev, current) {
-  const diff = { added: [], removed: [], changed: [] };
-  if (!prev || !current) return diff;
-  const prevNames = new Set((prev.configuredRepos || []).map((r) => r.name));
-  const currNames = new Set((current.configuredRepos || []).map((r) => r.name));
-  for (const name of currNames) {
-    if (!prevNames.has(name)) diff.added.push(name);
-  }
-  for (const name of prevNames) {
-    if (!currNames.has(name)) diff.removed.push(name);
-  }
-  const prevMap = Object.fromEntries((prev.configuredRepos || []).map((r) => [r.name, r]));
-  const currMap = Object.fromEntries((current.configuredRepos || []).map((r) => [r.name, r]));
-  for (const name of currNames) {
-    if (
-      prevNames.has(name) &&
-      (prevMap[name].healthScore || 0) !== (currMap[name].healthScore || 0)
-    ) {
-      diff.changed.push({
-        name,
-        field: "healthScore",
-        from: prevMap[name].healthScore || 0,
-        to: currMap[name].healthScore || 0,
-      });
-    }
-  }
-  return diff;
-}
 
 describe("computeDashboardDiff()", () => {
   it("detects added repos", () => {
