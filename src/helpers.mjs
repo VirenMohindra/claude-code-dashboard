@@ -33,6 +33,27 @@ export function gitCmd(repoDir, ...args) {
   }
 }
 
+const INSIGHT_ICONS = {
+  warning: "\u26A0\uFE0F",
+  tip: "\u2728",
+  promote: "\u2B06",
+  info: "\u2139\uFE0F",
+};
+
+/** Convert an insights array to a markdown string suitable for pasting into Claude Code. */
+export function insightsToMarkdown(insights) {
+  if (!insights || !insights.length) return "";
+  const lines = ["# Dashboard Insights\n"];
+  for (const i of insights) {
+    const icon = INSIGHT_ICONS[i.type] || INSIGHT_ICONS.info;
+    lines.push(`## ${icon} ${i.title}`);
+    if (i.detail) lines.push(i.detail);
+    if (i.action) lines.push(`**Action:** ${i.action}`);
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
 export function anonymizePath(p) {
   return p
     .replace(/^\/Users\/[^/]+\//, "~/")

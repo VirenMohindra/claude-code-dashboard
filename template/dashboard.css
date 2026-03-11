@@ -52,6 +52,31 @@ h1 {
   color: var(--accent);
   margin-bottom: 0.2rem;
 }
+.header-actions {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 100;
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.header-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.header-btn:hover {
+  border-color: var(--accent-dim);
+  color: var(--text);
+}
 .sub {
   color: var(--text-dim);
   font-size: 0.78rem;
@@ -609,6 +634,54 @@ details.cmd-detail > summary::-webkit-details-marker {
   color: var(--accent);
 }
 
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+.card-header h2 {
+  margin-bottom: 0;
+}
+.copy-md-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
+  white-space: nowrap;
+}
+.copy-md-btn:hover {
+  border-color: var(--accent-dim);
+  color: var(--text);
+}
+.copy-toast {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--surface);
+  border: 1px solid var(--accent-dim);
+  color: var(--text);
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.2s,
+    transform 0.2s;
+  z-index: 200;
+}
+.copy-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
 .insight-card {
   margin-bottom: 1.25rem;
 }
@@ -1133,10 +1206,6 @@ details.cmd-detail > summary::-webkit-details-marker {
 }
 
 .theme-toggle {
-  position: fixed;
-  top: 1rem;
-  right: 1rem;
-  z-index: 100;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;

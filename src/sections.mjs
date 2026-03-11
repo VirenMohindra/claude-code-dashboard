@@ -330,10 +330,14 @@ export function renderReferenceCard() {
 </div>`;
 }
 
-export function renderInsightsCard(insights) {
+export function renderInsightsCard(insights, markdown) {
   if (!insights || !insights.length) return "";
-  return `<div class="card insight-card">
-    <h2>Insights <span class="n">${insights.length}</span></h2>
+  const mdAttr = markdown ? ` data-markdown="${esc(markdown)}"` : "";
+  return `<div class="card insight-card"${mdAttr}>
+    <div class="card-header">
+      <h2>Insights <span class="n">${insights.length}</span></h2>
+      ${markdown ? `<button class="copy-md-btn" title="Copy as Markdown">&#128203; copy markdown</button>` : ""}
+    </div>
     ${insights
       .map(
         (i) =>

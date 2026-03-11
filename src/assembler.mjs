@@ -2,7 +2,7 @@ import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
-import { esc } from "./helpers.mjs";
+import { esc, insightsToMarkdown } from "./helpers.mjs";
 import { VERSION, REPO_URL } from "./constants.mjs";
 import { renderCmd, renderRule, renderRepoCard } from "./render.mjs";
 import {
@@ -64,8 +64,11 @@ export function generateDashboardHtml(data) {
   // ── Build section HTML fragments ──────────────────────────────────────────
 
   const header = `<h1>claude code dashboard</h1>
-<button id="theme-toggle" class="theme-toggle" title="Toggle light/dark mode" aria-label="Toggle theme"><span class="theme-icon"></span></button>
-<p class="sub">generated ${timestamp} · run <code>claude-code-dashboard</code> to refresh · <a href="${esc(REPO_URL)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">v${esc(VERSION)}</a></p>`;
+<div class="header-actions">
+  <button id="refresh-btn" class="header-btn" title="Copy refresh command to clipboard" aria-label="Copy refresh command">&#8635; refresh</button>
+  <button id="theme-toggle" class="theme-toggle" title="Toggle light/dark mode" aria-label="Toggle theme"><span class="theme-icon"></span></button>
+</div>
+<p class="sub">generated ${timestamp} · <a href="${esc(REPO_URL)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">v${esc(VERSION)}</a></p>`;
 
   const statsBar = renderStatsBar(data);
 
@@ -80,7 +83,8 @@ export function generateDashboardHtml(data) {
       ${globalRules.map((r) => renderRule(r)).join("\n  ")}
     </div>
   </div>`;
-  const insightsHtml = renderInsightsCard(insights);
+  const insightsMarkdown = insightsToMarkdown(insights);
+  const insightsHtml = renderInsightsCard(insights, insightsMarkdown);
   const chainsHtml = renderChainsCard(chains);
   const consolidationHtml = renderConsolidationCard(consolidationGroups);
   const tabOverview = `${overviewCommands}\n  ${insightsHtml}\n  ${chainsHtml}\n  ${consolidationHtml}`;

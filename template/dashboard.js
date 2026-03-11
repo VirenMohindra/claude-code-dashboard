@@ -119,6 +119,52 @@ groupSelect.addEventListener("change", function () {
     });
 });
 
+// ── Toast helper ────────────────────────────────────────────
+var toast = document.createElement("div");
+toast.className = "copy-toast";
+document.body.appendChild(toast);
+var toastTimer;
+function showToast(msg) {
+  toast.textContent = msg;
+  toast.classList.add("visible");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () {
+    toast.classList.remove("visible");
+  }, 2000);
+}
+
+// ── Copy Markdown button ────────────────────────────────────
+document.querySelectorAll(".copy-md-btn").forEach(function (btn) {
+  btn.addEventListener("click", function () {
+    var card = btn.closest("[data-markdown]");
+    if (!card) return;
+    var md = card.dataset.markdown;
+    navigator.clipboard
+      .writeText(md)
+      .then(function () {
+        showToast("Markdown copied to clipboard");
+      })
+      .catch(function () {
+        showToast("Copy failed \u2014 use browser copy from the insights card");
+      });
+  });
+});
+
+// ── Refresh button ──────────────────────────────────────────
+var refreshBtn = document.getElementById("refresh-btn");
+if (refreshBtn) {
+  refreshBtn.addEventListener("click", function () {
+    navigator.clipboard
+      .writeText("claude-code-dashboard --open")
+      .then(function () {
+        showToast("Copied \u2014 paste in terminal to refresh");
+      })
+      .catch(function () {
+        showToast("Run: claude-code-dashboard --open");
+      });
+  });
+}
+
 // Custom tooltip for heatmap cells and peak bars
 var tip = document.getElementById("chart-tooltip");
 document.addEventListener("mouseover", function (e) {
