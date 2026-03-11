@@ -63,5 +63,6 @@ jobs:
           echo "Dashboard generated successfully ($(wc -c < /tmp/dashboard.html) bytes)"
       - name: Verify CLI flags
         run: |
-          node generate-dashboard.mjs --version | grep -q "0.1.0"
+          node generate-dashboard.mjs --version | grep -qE "^[0-9]+\.[0-9]+\.[0-9]+$"
           node generate-dashboard.mjs --help | grep -q "Usage"
+          node generate-dashboard.mjs --json | python3 -c "import json,sys; d=json.load(sys.stdin); assert 'version' in d; assert 'stats' in d"
