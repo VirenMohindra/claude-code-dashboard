@@ -1,5 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { existsSync, readdirSync, readFileSync, statSync } from "fs";
+import { join } from "path";
 
 // We test the pure functions by importing the module's logic.
 // Since the main script runs side effects on import, we extract testable
@@ -1105,6 +1107,7 @@ function aggregateSessionMeta(sessions) {
       topTools: [],
       topLanguages: [],
       errorCategories: [],
+      heavySessions: 0,
     };
   }
 
@@ -1135,6 +1138,12 @@ function aggregateSessionMeta(sessions) {
     }
   }
 
+  let heavySessions = 0;
+  for (const s of sessions) {
+    const msgs = (s.user_message_count || 0) + (s.assistant_message_count || 0);
+    if (msgs > 50 || (s.duration_minutes || 0) > 30) heavySessions++;
+  }
+
   const sortDesc = (obj, limit) =>
     Object.entries(obj)
       .map(([name, count]) => ({ name, count }))
@@ -1147,6 +1156,7 @@ function aggregateSessionMeta(sessions) {
     topTools: sortDesc(toolCounts, 10),
     topLanguages: sortDesc(langCounts, 8),
     errorCategories: sortDesc(errorCounts, 5),
+    heavySessions,
   };
 }
 
@@ -1251,6 +1261,55 @@ describe("aggregateSessionMeta()", () => {
     assert.equal(result.errorCategories.length, 5);
     assert.equal(result.errorCategories[0].count, 10);
     assert.equal(result.errorCategories[4].count, 6);
+  });
+
+  it("aggregates error categories", () => {
+    const sessions = [
+      {
+        duration_minutes: 5,
+        tool_counts: {},
+        languages: {},
+        tool_error_categories: { "Command Failed": 3, "File Not Found": 1 },
+      },
+      {
+        duration_minutes: 5,
+        tool_counts: {},
+        languages: {},
+        tool_error_categories: { "Command Failed": 2 },
+      },
+    ];
+    const result = aggregateSessionMeta(sessions);
+    assert.equal(result.errorCategories[0].name, "Command Failed");
+    assert.equal(result.errorCategories[0].count, 5);
+    assert.equal(result.errorCategories.length, 2);
+  });
+
+  it("counts heavy sessions", () => {
+    const sessions = [
+      {
+        duration_minutes: 5,
+        user_message_count: 3,
+        assistant_message_count: 3,
+        tool_counts: {},
+        languages: {},
+      },
+      {
+        duration_minutes: 60,
+        user_message_count: 10,
+        assistant_message_count: 40,
+        tool_counts: {},
+        languages: {},
+      },
+      {
+        duration_minutes: 5,
+        user_message_count: 30,
+        assistant_message_count: 25,
+        tool_counts: {},
+        languages: {},
+      },
+    ];
+    const result = aggregateSessionMeta(sessions);
+    assert.equal(result.heavySessions, 2);
   });
 });
 
@@ -1493,6 +1552,49 @@ describe("findPromotionCandidates()", () => {
     const result = findPromotionCandidates(servers);
     assert.equal(result.length, 1);
     assert.deepEqual(result[0].projects, ["~/a-project", "~/z-project"]);
+  });
+});
+
+// ── Historical MCP Server Scanning ─────────────────────────────────────────
+
+// NOTE: Must match production scanHistoricalMcpServers in generate-dashboard.mjs.
+
+function scanHistoricalMcpServers(claudeDir) {
+  const historical = new Set();
+  const fileHistoryDir = join(claudeDir, "file-history");
+  if (!existsSync(fileHistoryDir)) return [];
+  try {
+    for (const sessionDir of readdirSync(fileHistoryDir)) {
+      const sessionPath = join(fileHistoryDir, sessionDir);
+      if (!statSync(sessionPath).isDirectory()) continue;
+      try {
+        for (const snapFile of readdirSync(sessionPath)) {
+          const snapPath = join(sessionPath, snapFile);
+          try {
+            const content = readFileSync(snapPath, "utf8");
+            if (!content.includes("mcpServers")) continue;
+            const data = JSON.parse(content);
+            for (const name of Object.keys(data.mcpServers || {})) {
+              historical.add(name);
+            }
+          } catch {
+            /* skip malformed */
+          }
+        }
+      } catch {
+        /* skip unreadable session dir */
+      }
+    }
+  } catch {
+    /* skip unreadable file-history dir */
+  }
+  return [...historical];
+}
+
+describe("scanHistoricalMcpServers()", () => {
+  // We test with a mock since file-history is user-specific
+  it("returns empty for nonexistent dir", () => {
+    assert.deepEqual(scanHistoricalMcpServers("/nonexistent"), []);
   });
 });
 

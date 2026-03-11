@@ -1168,6 +1168,7 @@ function aggregateSessionMeta(sessions) {
       topTools: [],
       topLanguages: [],
       errorCategories: [],
+      heavySessions: 0,
     };
   }
 
@@ -1198,6 +1199,12 @@ function aggregateSessionMeta(sessions) {
     }
   }
 
+  let heavySessions = 0;
+  for (const s of sessions) {
+    const msgs = (s.user_message_count || 0) + (s.assistant_message_count || 0);
+    if (msgs > 50 || (s.duration_minutes || 0) > 30) heavySessions++;
+  }
+
   const sortDesc = (obj, limit) =>
     Object.entries(obj)
       .map(([name, count]) => ({ name, count }))
@@ -1210,6 +1217,7 @@ function aggregateSessionMeta(sessions) {
     topTools: sortDesc(toolCounts, 10),
     topLanguages: sortDesc(langCounts, 8),
     errorCategories: sortDesc(errorCounts, 5),
+    heavySessions,
   };
 }
 
@@ -1258,6 +1266,38 @@ function findPromotionCandidates(servers) {
     .filter(([, projects]) => projects.size >= 2)
     .map(([name, projects]) => ({ name, projects: [...projects].sort() }))
     .sort((a, b) => b.projects.length - a.projects.length || a.name.localeCompare(b.name));
+}
+
+function scanHistoricalMcpServers(claudeDir) {
+  const historical = new Set();
+  const fileHistoryDir = join(claudeDir, "file-history");
+  if (!existsSync(fileHistoryDir)) return [];
+  try {
+    for (const sessionDir of readdirSync(fileHistoryDir)) {
+      const sessionPath = join(fileHistoryDir, sessionDir);
+      if (!statSync(sessionPath).isDirectory()) continue;
+      try {
+        for (const snapFile of readdirSync(sessionPath)) {
+          const snapPath = join(sessionPath, snapFile);
+          try {
+            const content = readFileSync(snapPath, "utf8");
+            if (!content.includes("mcpServers")) continue;
+            const data = JSON.parse(content);
+            for (const name of Object.keys(data.mcpServers || {})) {
+              historical.add(name);
+            }
+          } catch {
+            /* skip malformed */
+          }
+        }
+      } catch {
+        /* skip unreadable session dir */
+      }
+    }
+  } catch {
+    /* skip unreadable file-history dir */
+  }
+  return [...historical];
 }
 
 // ── Freshness ───────────────────────────────────────────────────────────────
@@ -1544,6 +1584,11 @@ const mcpSummary = Object.values(mcpByName).sort((a, b) => {
 });
 const mcpCount = mcpSummary.length;
 
+// Historical MCP servers (formerly installed, now removed)
+const historicalMcpNames = scanHistoricalMcpServers(CLAUDE_DIR);
+const currentMcpNames = new Set(allMcpServers.map((s) => s.name));
+const formerMcpServers = historicalMcpNames.filter((name) => !currentMcpNames.has(name)).sort();
+
 // ── Usage Analytics Data Collection ─────────────────────────────────────────
 
 // Session meta files from ~/.claude/usage-data/session-meta/*.json
@@ -1726,6 +1771,7 @@ if (cliArgs.json) {
             totalTokens: ccusageData.totals.totalTokens,
           }
         : {}),
+      errorCategories: usageAnalytics.errorCategories,
     },
     globalCommands: globalCmds.map((c) => ({ name: c.name, description: c.desc })),
     globalRules: globalRules.map((r) => ({ name: r.name, description: r.desc })),
@@ -1771,6 +1817,7 @@ if (cliArgs.json) {
     })),
     mcpServers: mcpSummary,
     mcpPromotions,
+    formerMcpServers,
   };
 
   const jsonOutput = JSON.stringify(jsonData, null, 2);
@@ -2226,6 +2273,8 @@ const html = `<!DOCTYPE html>
   .mcp-promote { font-size: .72rem; color: var(--text-dim); padding: .4rem .5rem; background: rgba(251,191,36,.05); border: 1px solid rgba(251,191,36,.15); border-radius: 6px; margin-top: .3rem; }
   .mcp-promote .mcp-name { color: var(--yellow); }
   .mcp-promote code { font-size: .65rem; color: var(--accent); }
+  .mcp-former { opacity: .4; }
+  .badge.mcp-former-badge { color: var(--text-dim); border-color: var(--border); background: var(--surface2); font-style: italic; }
 
   .usage-bar-row { display: flex; align-items: center; gap: .5rem; padding: .25rem 0; font-size: .75rem; }
   .usage-bar-label { width: 100px; flex-shrink: 0; color: var(--text); font-weight: 500; font-size: .72rem; }
@@ -2233,6 +2282,7 @@ const html = `<!DOCTYPE html>
   .usage-bar-fill { height: 100%; border-radius: 4px; transition: width .3s; }
   .usage-bar-tool { background: linear-gradient(90deg, var(--blue), var(--green)); }
   .usage-bar-lang { background: linear-gradient(90deg, var(--green), var(--accent)); }
+  .usage-bar-error { background: linear-gradient(90deg, var(--red), var(--yellow)); }
   .usage-bar-count { font-size: .65rem; color: var(--text-dim); min-width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
 
   .heatmap { display: grid; grid-template-rows: repeat(7, 1fr); grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; }
@@ -2352,6 +2402,7 @@ const html = `<!DOCTYPE html>
   ${driftCount > 0 ? `<div class="stat" style="border-color:#f8717133"><b style="color:var(--red)">${driftCount}</b><span>Drifting Repos</span></div>` : ""}
   ${ccusageData ? `<div class="stat" style="border-color:#4ade8033"><b style="color:var(--green)">$${Math.round(ccusageData.totals.totalCost).toLocaleString()}</b><span>Total Spent</span></div>` : ""}
   ${ccusageData ? `<div class="stat"><b>${formatTokens(ccusageData.totals.totalTokens).replace(" tokens", "")}</b><span>Total Tokens</span></div>` : ""}
+  ${usageAnalytics.heavySessions > 0 ? `<div class="stat"><b>${usageAnalytics.heavySessions}</b><span>Heavy Sessions</span></div>` : ""}
 </div>
 
 <div class="top-grid">
@@ -2411,10 +2462,15 @@ ${
               )
               .join("\n    ")
           : "";
+        const formerHtml = formerMcpServers.length
+          ? `<div class="label" style="margin-top:.75rem">Formerly Installed</div>
+  ${formerMcpServers.map((name) => `<div class="mcp-row mcp-former"><span class="mcp-name">${esc(name)}</span><span class="badge mcp-former-badge">removed</span></div>`).join("\n    ")}`
+          : "";
         return `<div class="card full">
   <h2>MCP Servers <span class="n">${mcpSummary.length}</span></h2>
   ${rows}
   ${promoteHtml}
+  ${formerHtml}
 </div>`;
       })()
     : ""
@@ -2448,6 +2504,23 @@ ${
           .join("\n    ");
         return `<div class="card">
   <h2>Languages <span class="n">${usageAnalytics.topLanguages.length}</span></h2>
+  ${rows}
+</div>`;
+      })()
+    : ""
+}
+${
+  usageAnalytics.errorCategories.length
+    ? (() => {
+        const maxCount = usageAnalytics.errorCategories[0].count;
+        const rows = usageAnalytics.errorCategories
+          .map((e) => {
+            const pct = maxCount > 0 ? Math.round((e.count / maxCount) * 100) : 0;
+            return `<div class="usage-bar-row"><span class="usage-bar-label">${esc(e.name)}</span><div class="usage-bar-track"><div class="usage-bar-fill usage-bar-error" style="width:${pct}%"></div></div><span class="usage-bar-count">${e.count.toLocaleString()}</span></div>`;
+          })
+          .join("\n    ");
+        return `<div class="card">
+  <h2>Top Errors <span class="n">${usageAnalytics.errorCategories.length}</span></h2>
   ${rows}
 </div>`;
       })()
