@@ -20,7 +20,16 @@ import { execFileSync, execFile } from "child_process";
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from "fs";
 import { join, basename, dirname } from "path";
 
-import { VERSION, HOME, CLAUDE_DIR, DEFAULT_OUTPUT, CONF, MAX_DEPTH, REPO_URL } from "./src/constants.mjs";
+import {
+  VERSION,
+  HOME,
+  CLAUDE_DIR,
+  DEFAULT_OUTPUT,
+  CONF,
+  MAX_DEPTH,
+  REPO_URL,
+  SIMILARITY_THRESHOLD,
+} from "./src/constants.mjs";
 import { parseArgs, generateCompletions } from "./src/cli.mjs";
 import { shortPath } from "./src/helpers.mjs";
 import { anonymizeAll } from "./src/anonymize.mjs";
@@ -194,7 +203,7 @@ for (const repo of configured) {
   const similar = configured
     .filter((r) => r !== repo)
     .map((r) => ({ name: r.name, similarity: computeConfigSimilarity(repo, r) }))
-    .filter((r) => r.similarity >= 25)
+    .filter((r) => r.similarity >= SIMILARITY_THRESHOLD)
     .sort((a, b) => b.similarity - a.similarity)
     .slice(0, 2);
   repo.similarRepos = similar;
@@ -334,8 +343,8 @@ const { recent: recentMcpServers, former: formerMcpServers } = classifyHistorica
   currentMcpNames,
 );
 
-// Shorten project paths in former servers
-for (const server of formerMcpServers) {
+// Normalize all historical project paths
+for (const server of [...recentMcpServers, ...formerMcpServers]) {
   server.projects = server.projects.map((p) => shortPath(p));
 }
 
@@ -345,7 +354,7 @@ for (const server of recentMcpServers) {
     mcpByName[server.name] = {
       name: server.name,
       type: "unknown",
-      projects: server.projects.map((p) => shortPath(p)),
+      projects: server.projects,
       userLevel: false,
       disabledIn: disabledByServer[server.name] || 0,
       recentlyActive: true,
@@ -360,7 +369,7 @@ const mcpCount = mcpSummary.length;
 
 // ── Usage Analytics ──────────────────────────────────────────────────────────
 
-const SESSION_META_LIMIT = 500;
+const SESSION_META_LIMIT = 1000;
 const sessionMetaDir = join(CLAUDE_DIR, "usage-data", "session-meta");
 const sessionMetaFiles = [];
 if (existsSync(sessionMetaDir)) {
@@ -686,8 +695,12 @@ writeFileSync(outputPath, html);
 if (!cliArgs.quiet) {
   const sp = shortPath(outputPath);
   console.log(`\n  claude-code-dashboard v${VERSION}\n`);
-  console.log(`  ${configuredCount} configured · ${unconfiguredCount} unconfigured · ${totalRepos} repos`);
-  console.log(`  ${globalCmds.length} global commands · ${globalSkills.length} skills · ${mcpCount} MCP servers`);
+  console.log(
+    `  ${configuredCount} configured · ${unconfiguredCount} unconfigured · ${totalRepos} repos`,
+  );
+  console.log(
+    `  ${globalCmds.length} global commands · ${globalSkills.length} skills · ${mcpCount} MCP servers`,
+  );
   console.log(`\n  ✓ ${sp}`);
   if (cliArgs.open) console.log(`  ✓ opening in browser`);
   console.log(`\n  ${REPO_URL}`);

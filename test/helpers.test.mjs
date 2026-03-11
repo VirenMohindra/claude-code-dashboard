@@ -1250,7 +1250,10 @@ describe("classifyHistoricalServers()", () => {
     oldDate.setDate(oldDate.getDate() - 60);
 
     const historical = new Map([
-      ["playwright", { name: "playwright", projects: new Set(["/Users/me/app"]), lastSeen: recentDate }],
+      [
+        "playwright",
+        { name: "playwright", projects: new Set(["/Users/me/app"]), lastSeen: recentDate },
+      ],
       ["redis", { name: "redis", projects: new Set(["/Users/me/cache"]), lastSeen: oldDate }],
       ["unknown-server", { name: "unknown-server", projects: new Set(), lastSeen: null }],
     ]);
@@ -1289,6 +1292,44 @@ describe("classifyHistoricalServers()", () => {
 
     const outside = classifyHistoricalServers(historical, currentNames, 5);
     assert.equal(outside.former.length, 1);
+  });
+
+  it("returns empty for empty map", () => {
+    const { recent, former } = classifyHistoricalServers(new Map(), new Set());
+    assert.equal(recent.length, 0);
+    assert.equal(former.length, 0);
+  });
+
+  it("filters all when everything is current", () => {
+    const historical = new Map([
+      ["a", { name: "a", projects: new Set(), lastSeen: new Date() }],
+      ["b", { name: "b", projects: new Set(), lastSeen: new Date() }],
+    ]);
+    const currentNames = new Set(["a", "b"]);
+    const { recent, former } = classifyHistoricalServers(historical, currentNames);
+    assert.equal(recent.length, 0);
+    assert.equal(former.length, 0);
+  });
+
+  it("handles exact cutoff boundary (inclusive)", () => {
+    const now = new Date("2026-03-11T12:00:00Z");
+    // Compute the exact cutoff the function will use
+    const expectedCutoff = new Date(now);
+    expectedCutoff.setDate(expectedCutoff.getDate() - 30);
+    const historical = new Map([
+      ["server", { name: "server", projects: new Set(), lastSeen: expectedCutoff }],
+    ]);
+    const { recent, former } = classifyHistoricalServers(historical, new Set(), 30, now);
+    assert.equal(recent.length, 1, "server at exact cutoff should be recent (>=)");
+    assert.equal(former.length, 0);
+  });
+
+  it("accepts now parameter for deterministic testing", () => {
+    const now = new Date("2026-06-01T00:00:00Z");
+    const lastSeen = new Date("2026-05-20T00:00:00Z"); // 12 days before now
+    const historical = new Map([["test", { name: "test", projects: new Set(), lastSeen }]]);
+    const { recent } = classifyHistoricalServers(historical, new Set(), 30, now);
+    assert.equal(recent.length, 1);
   });
 });
 

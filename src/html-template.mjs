@@ -88,10 +88,14 @@ export function generateDashboardHtml({
           : "";
         const formerHtml = formerMcpServers.length
           ? `<div class="label" style="margin-top:.75rem">Formerly Installed</div>
-  ${formerMcpServers.map((s) => {
-              const hint = s.projects.length ? `<span class="mcp-projects">${s.projects.map((p) => esc(p)).join(", ")}</span>` : "";
-              return `<div class="mcp-row mcp-former"><span class="mcp-name">${esc(s.name)}</span><span class="badge mcp-former-badge">removed</span>${hint}</div>`;
-            }).join("\n    ")}`
+  ${formerMcpServers
+    .map((s) => {
+      const hint = s.projects.length
+        ? `<span class="mcp-projects">${s.projects.map((p) => esc(p)).join(", ")}</span>`
+        : "";
+      return `<div class="mcp-row mcp-former"><span class="mcp-name">${esc(s.name)}</span><span class="badge mcp-former-badge">removed</span>${hint}</div>`;
+    })
+    .join("\n    ")}`
           : "";
         return `<div class="card">
   <h2>MCP Servers <span class="n">${mcpSummary.length}</span></h2>
@@ -403,6 +407,7 @@ export function generateDashboardHtml({
 
   /* ── Cards ────────────────────────────────────────────────── */
   .top-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem; }
+  .top-grid > .card { margin-bottom: 0; }
   @media (max-width: 900px) { .top-grid { grid-template-columns: 1fr; } }
 
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; overflow: hidden; margin-bottom: 1.25rem; }
@@ -639,7 +644,7 @@ export function generateDashboardHtml({
 <body>
 <h1>claude code dashboard</h1>
 <button id="theme-toggle" class="theme-toggle" title="Toggle light/dark mode" aria-label="Toggle theme"><span class="theme-icon"></span></button>
-<p class="sub">generated ${timestamp} · run <code>claude-code-dashboard</code> to refresh · <a href="${REPO_URL}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">v${VERSION}</a></p>
+<p class="sub">generated ${timestamp} · run <code>claude-code-dashboard</code> to refresh · <a href="${esc(REPO_URL)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">v${esc(VERSION)}</a></p>
 
 <div class="stats">
   <div class="stat coverage"><b>${coveragePct}%</b><span>Coverage (${configuredCount}/${totalRepos})</span></div>
@@ -684,8 +689,8 @@ export function generateDashboardHtml({
 
 <div class="tab-content" id="tab-analytics">
   <div class="top-grid">
-    ${toolsHtml ? toolsHtml.replace('class="card"', 'class="card" style="margin-bottom:0"') : ""}
-    ${langsHtml ? langsHtml.replace('class="card"', 'class="card" style="margin-bottom:0"') : ""}
+    ${toolsHtml || ""}
+    ${langsHtml || ""}
   </div>
   ${errorsHtml}
   ${activityHtml}

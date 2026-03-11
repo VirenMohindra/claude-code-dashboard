@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { join } from "path";
+import { MAX_SESSION_SCAN } from "./constants.mjs";
 
 export function parseUserMcpConfig(content) {
   try {
@@ -82,7 +83,7 @@ export function scanHistoricalMcpServers(claudeDir) {
   const servers = new Map(); // name → { name, projects: Set, lastSeen: Date|null }
 
   try {
-    const sessionDirs = readdirSync(fileHistoryDir);
+    const sessionDirs = readdirSync(fileHistoryDir).sort().slice(-MAX_SESSION_SCAN);
     for (const sessionDir of sessionDirs) {
       const sessionPath = join(fileHistoryDir, sessionDir);
       try {
@@ -144,8 +145,13 @@ export function scanHistoricalMcpServers(claudeDir) {
  * Classify historical MCP servers as "recent" (seen in last recencyDays) or "former".
  * Recent servers are merged into the current server list if not already present.
  */
-export function classifyHistoricalServers(historicalMap, currentNames, recencyDays = 30) {
-  const cutoff = new Date();
+export function classifyHistoricalServers(
+  historicalMap,
+  currentNames,
+  recencyDays = 30,
+  now = null,
+) {
+  const cutoff = new Date(now || Date.now());
   cutoff.setDate(cutoff.getDate() - recencyDays);
 
   const recent = [];

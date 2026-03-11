@@ -3,13 +3,14 @@ import { homedir } from "os";
 
 export const VERSION = "0.0.2";
 export const REPO_URL = "https://github.com/VirenMohindra/claude-code-dashboard";
-export const NPM_PACKAGE = "@viren/claude-code-dashboard";
 
 export const HOME = homedir();
 export const CLAUDE_DIR = join(HOME, ".claude");
 export const DEFAULT_OUTPUT = join(CLAUDE_DIR, "dashboard.html");
 export const CONF = join(CLAUDE_DIR, "dashboard.conf");
 export const MAX_DEPTH = 5;
+export const MAX_SESSION_SCAN = 1000;
+export const SIMILARITY_THRESHOLD = 25;
 
 // Freshness thresholds (seconds)
 export const ONE_DAY = 86_400;

@@ -407,6 +407,14 @@ export function generateDemoData() {
         disabledIn: 0,
       },
       { name: "sentry", type: "http", projects: [], userLevel: true, disabledIn: 0 },
+      {
+        name: "figma",
+        type: "stdio",
+        projects: ["~/work/acme-web"],
+        userLevel: false,
+        disabledIn: 0,
+        recentlyActive: true,
+      },
     ],
     mcpPromotions: [{ name: "github", projects: ["~/work/acme-web", "~/work/payments-api"] }],
     formerMcpServers: [

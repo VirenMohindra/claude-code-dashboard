@@ -3,7 +3,7 @@ import { VERSION, DEFAULT_OUTPUT, HOME } from "./constants.mjs";
 export function parseArgs(argv) {
   const args = {
     output: DEFAULT_OUTPUT,
-    open: true,
+    open: process.stdout.isTTY !== false,
     json: false,
     catalog: false,
     command: null,
