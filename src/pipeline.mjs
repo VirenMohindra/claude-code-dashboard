@@ -55,8 +55,7 @@ export function buildDashboardData(raw) {
       techStack: repo.techStack || [],
     };
 
-    const hasConfig =
-      entry.commands.length > 0 || entry.rules.length > 0 || repo.agentsFile;
+    const hasConfig = entry.commands.length > 0 || entry.rules.length > 0 || repo.agentsFile;
 
     if (hasConfig) {
       entry.freshnessText = relativeTime(entry.freshness);
@@ -88,10 +87,7 @@ export function buildDashboardData(raw) {
   // Sort configured by richness (most config first)
   configured.sort((a, b) => {
     const score = (r) =>
-      r.commands.length * 3 +
-      r.rules.length * 2 +
-      r.sections.length +
-      (r.desc.length > 0 ? 1 : 0);
+      r.commands.length * 3 + r.rules.length * 2 + r.sections.length + (r.desc.length > 0 ? 1 : 0);
     return score(b) - score(a);
   });
 
@@ -165,8 +161,7 @@ export function buildDashboardData(raw) {
   for (const [repoPath, servers] of Object.entries(raw.projectMcpByRepo || {})) {
     allMcpServers.push(...servers);
     const repo =
-      configured.find((r) => r.path === repoPath) ||
-      unconfigured.find((r) => r.path === repoPath);
+      configured.find((r) => r.path === repoPath) || unconfigured.find((r) => r.path === repoPath);
     if (repo) repo.mcpServers = servers;
   }
 
@@ -200,8 +195,10 @@ export function buildDashboardData(raw) {
 
   // Historical MCP servers
   const currentMcpNames = new Set(allMcpServers.map((s) => s.name));
-  const { recent: recentMcpServers, former: formerMcpServers } =
-    classifyHistoricalServers(raw.historicalMcpMap || new Map(), currentMcpNames);
+  const { recent: recentMcpServers, former: formerMcpServers } = classifyHistoricalServers(
+    raw.historicalMcpMap || new Map(),
+    currentMcpNames,
+  );
 
   // Normalize historical project paths
   for (const server of [...recentMcpServers, ...formerMcpServers]) {
@@ -305,9 +302,7 @@ export function buildDashboardData(raw) {
   // Supplement dailyActivity with session-meta data
   const sessionMetaFiles = raw.sessionMetaFiles || [];
   if (sessionMetaFiles.length > 0) {
-    const existingDates = new Set(
-      (statsCache.dailyActivity || []).map((d) => d.date),
-    );
+    const existingDates = new Set((statsCache.dailyActivity || []).map((d) => d.date));
     const sessionDayCounts = {};
     for (const s of sessionMetaFiles) {
       const date = (s.start_time || "").slice(0, 10);
@@ -317,23 +312,21 @@ export function buildDashboardData(raw) {
         (s.user_message_count || 0) +
         (s.assistant_message_count || 0);
     }
-    const supplemental = Object.entries(sessionDayCounts).map(
-      ([date, messageCount]) => ({ date, messageCount }),
-    );
+    const supplemental = Object.entries(sessionDayCounts).map(([date, messageCount]) => ({
+      date,
+      messageCount,
+    }));
     if (supplemental.length > 0) {
-      statsCache.dailyActivity = [
-        ...(statsCache.dailyActivity || []),
-        ...supplemental,
-      ].sort((a, b) => a.date.localeCompare(b.date));
+      statsCache.dailyActivity = [...(statsCache.dailyActivity || []), ...supplemental].sort(
+        (a, b) => a.date.localeCompare(b.date),
+      );
     }
   }
 
   // Supplement dailyActivity with ccusage data
   const ccusageData = raw.ccusageData;
   if (ccusageData && ccusageData.daily) {
-    const existingDates = new Set(
-      (statsCache.dailyActivity || []).map((d) => d.date),
-    );
+    const existingDates = new Set((statsCache.dailyActivity || []).map((d) => d.date));
     const ccusageSupplemental = ccusageData.daily
       .filter((d) => d.date && !existingDates.has(d.date) && d.totalTokens > 0)
       .map((d) => ({
@@ -341,10 +334,9 @@ export function buildDashboardData(raw) {
         messageCount: Math.max(1, Math.round(d.totalTokens / 10000)),
       }));
     if (ccusageSupplemental.length > 0) {
-      statsCache.dailyActivity = [
-        ...(statsCache.dailyActivity || []),
-        ...ccusageSupplemental,
-      ].sort((a, b) => a.date.localeCompare(b.date));
+      statsCache.dailyActivity = [...(statsCache.dailyActivity || []), ...ccusageSupplemental].sort(
+        (a, b) => a.date.localeCompare(b.date),
+      );
     }
   }
 
@@ -353,18 +345,11 @@ export function buildDashboardData(raw) {
   const totalRepos = raw.repos.length;
   const configuredCount = configured.length;
   const unconfiguredCount = unconfigured.length;
-  const coveragePct =
-    totalRepos > 0 ? Math.round((configuredCount / totalRepos) * 100) : 0;
-  const totalRepoCmds = configured.reduce(
-    (sum, r) => sum + r.commands.length,
-    0,
-  );
+  const coveragePct = totalRepos > 0 ? Math.round((configuredCount / totalRepos) * 100) : 0;
+  const totalRepoCmds = configured.reduce((sum, r) => sum + r.commands.length, 0);
   const avgHealth =
     configured.length > 0
-      ? Math.round(
-          configured.reduce((sum, r) => sum + (r.healthScore || 0), 0) /
-            configured.length,
-        )
+      ? Math.round(configured.reduce((sum, r) => sum + (r.healthScore || 0), 0) / configured.length)
       : 0;
   const driftCount = configured.filter(
     (r) => r.drift && (r.drift.level === "medium" || r.drift.level === "high"),
@@ -381,10 +366,7 @@ export function buildDashboardData(raw) {
       type: "warning",
       title: `${highDriftRepos.length} repo${highDriftRepos.length > 1 ? "s have" : " has"} high config drift`,
       detail: highDriftRepos
-        .map(
-          (r) =>
-            `${r.name} (${r.drift.commitsSince} commits since config update)`,
-        )
+        .map((r) => `${r.name} (${r.drift.commitsSince} commits since config update)`)
         .join(", "),
       action: "Review and update CLAUDE.md in these repos",
     });
@@ -394,9 +376,7 @@ export function buildDashboardData(raw) {
   if (unconfigured.length > 0 && totalRepos > 0) {
     const pct = Math.round((unconfigured.length / totalRepos) * 100);
     if (pct >= 40) {
-      const withStack = unconfigured
-        .filter((r) => r.techStack?.length > 0)
-        .slice(0, 3);
+      const withStack = unconfigured.filter((r) => r.techStack?.length > 0).slice(0, 3);
       insights.push({
         type: "info",
         title: `${unconfigured.length} repos unconfigured (${pct}%)`,
@@ -413,26 +393,19 @@ export function buildDashboardData(raw) {
     insights.push({
       type: "promote",
       title: `${mcpPromotions.length} MCP server${mcpPromotions.length > 1 ? "s" : ""} could be promoted to global`,
-      detail: mcpPromotions
-        .map((p) => `${p.name} (in ${p.projects.length} projects)`)
-        .join(", "),
+      detail: mcpPromotions.map((p) => `${p.name} (in ${p.projects.length} projects)`).join(", "),
       action: "Add to ~/.claude/mcp_config.json for all projects",
     });
   }
 
   // Redundant project-scope MCP configs
-  const redundantMcp = Object.values(mcpByName).filter(
-    (s) => s.userLevel && s.projects.length > 0,
-  );
+  const redundantMcp = Object.values(mcpByName).filter((s) => s.userLevel && s.projects.length > 0);
   if (redundantMcp.length > 0) {
     insights.push({
       type: "tip",
       title: `${redundantMcp.length} MCP server${redundantMcp.length > 1 ? "s are" : " is"} global but also in project .mcp.json`,
-      detail: redundantMcp
-        .map((s) => `${s.name} (${s.projects.join(", ")})`)
-        .join("; "),
-      action:
-        "Remove from project .mcp.json — global config already covers all projects",
+      detail: redundantMcp.map((s) => `${s.name} (${s.projects.join(", ")})`).join("; "),
+      action: "Remove from project .mcp.json — global config already covers all projects",
     });
   }
 
@@ -453,19 +426,14 @@ export function buildDashboardData(raw) {
     insights.push({
       type: "info",
       title: `${widelyRelevant.length} skill${widelyRelevant.length > 1 ? "s" : ""} relevant across 3+ repos`,
-      detail: top
-        .map(([name, repos]) => `${name} (${repos.length} repos)`)
-        .join(", "),
+      detail: top.map(([name, repos]) => `${name} (${repos.length} repos)`).join(", "),
       action: "Consider adding these skills to your global config",
     });
   }
 
   // Health quick wins
   const quickWinRepos = configured
-    .filter(
-      (r) =>
-        r.healthScore > 0 && r.healthScore < 80 && r.healthReasons?.length > 0,
-    )
+    .filter((r) => r.healthScore > 0 && r.healthScore < 80 && r.healthReasons?.length > 0)
     .sort((a, b) => b.healthScore - a.healthScore)
     .slice(0, 3);
   if (quickWinRepos.length > 0) {
@@ -484,8 +452,7 @@ export function buildDashboardData(raw) {
     insights.push({
       type: "info",
       title: "Generate your Claude Code Insights report",
-      detail:
-        "Get personalized usage patterns, friction points, and feature suggestions",
+      detail: "Get personalized usage patterns, friction points, and feature suggestions",
       action: "Run /insights in Claude Code",
     });
   }
@@ -502,9 +469,7 @@ export function buildDashboardData(raw) {
       })
       .toLowerCase() +
     " at " +
-    now
-      .toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
-      .toLowerCase();
+    now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).toLowerCase();
 
   // ── Return ────────────────────────────────────────────────────────────
 

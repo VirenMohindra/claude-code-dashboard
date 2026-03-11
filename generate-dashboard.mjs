@@ -36,17 +36,9 @@ import { generateDemoRawInputs } from "./src/demo.mjs";
 import { findGitRepos, getScanRoots } from "./src/discovery.mjs";
 import { extractProjectDesc, extractSections, scanMdDir } from "./src/markdown.mjs";
 import { scanSkillsDir, groupSkillsByCategory } from "./src/skills.mjs";
-import {
-  detectTechStack,
-  lintConfig,
-  computeDashboardDiff,
-} from "./src/analysis.mjs";
+import { detectTechStack, lintConfig, computeDashboardDiff } from "./src/analysis.mjs";
 import { getFreshness } from "./src/freshness.mjs";
-import {
-  parseUserMcpConfig,
-  parseProjectMcpConfig,
-  scanHistoricalMcpServers,
-} from "./src/mcp.mjs";
+import { parseUserMcpConfig, parseProjectMcpConfig, scanHistoricalMcpServers } from "./src/mcp.mjs";
 import { handleInit } from "./src/templates.mjs";
 import { generateCatalogHtml } from "./src/render.mjs";
 import { generateDashboardHtml } from "./src/assembler.mjs";
@@ -364,7 +356,10 @@ if (cliArgs.command === "lint") {
 const SNAPSHOT_PATH = join(CLAUDE_DIR, "dashboard-snapshot.json");
 if (cliArgs.diff) {
   const currentSnapshot = {
-    configuredRepos: data.configured.map((r) => ({ name: r.name, healthScore: r.healthScore || 0 })),
+    configuredRepos: data.configured.map((r) => ({
+      name: r.name,
+      healthScore: r.healthScore || 0,
+    })),
   };
   if (existsSync(SNAPSHOT_PATH)) {
     try {

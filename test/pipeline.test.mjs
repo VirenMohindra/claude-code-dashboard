@@ -36,9 +36,7 @@ function makeFullRaw() {
           { name: "deploy", desc: "Deploy to production", filepath: ".claude/commands/deploy.md" },
           { name: "test", desc: "Run tests", filepath: ".claude/commands/test.md" },
         ],
-        rules: [
-          { name: "style", desc: "Code style", filepath: ".claude/rules/style.md" },
-        ],
+        rules: [{ name: "style", desc: "Code style", filepath: ".claude/rules/style.md" }],
         agentsFile: "/Users/test/projects/webapp/CLAUDE.md",
         desc: ["A React web application"],
         sections: [
@@ -59,9 +57,7 @@ function makeFullRaw() {
         rules: [],
         agentsFile: "/Users/test/projects/api-server/AGENTS.md",
         desc: ["Node.js REST API"],
-        sections: [
-          { name: "Architecture", preview: "Express + Postgres" },
-        ],
+        sections: [{ name: "Architecture", preview: "Express + Postgres" }],
         techStack: ["node"],
         freshness: now - 86400 * 100, // 100 days ago (stale)
         gitRevCount: 25, // high drift
@@ -83,7 +79,9 @@ function makeFullRaw() {
         name: "dashboard",
         path: "/Users/test/projects/dashboard",
         shortPath: "~/projects/dashboard",
-        commands: [{ name: "build", desc: "Build dashboard", filepath: ".claude/commands/build.md" }],
+        commands: [
+          { name: "build", desc: "Build dashboard", filepath: ".claude/commands/build.md" },
+        ],
         rules: [{ name: "style", desc: "Code style", filepath: ".claude/rules/style.md" }],
         agentsFile: "/Users/test/projects/dashboard/CLAUDE.md",
         desc: ["Dashboard UI"],
@@ -109,8 +107,20 @@ function makeFullRaw() {
     globalCmds: [{ name: "help", desc: "Show help", filepath: "~/.claude/commands/help.md" }],
     globalRules: [{ name: "tone", desc: "Professional tone", filepath: "~/.claude/rules/tone.md" }],
     globalSkills: [
-      { name: "react-testing", desc: "React test patterns", filepath: "~/.claude/skills/react-testing/SKILL.md", source: "custom", category: "code-quality" },
-      { name: "node-debug", desc: "Node debugging", filepath: "~/.claude/skills/node-debug/SKILL.md", source: "custom", category: "debugging" },
+      {
+        name: "react-testing",
+        desc: "React test patterns",
+        filepath: "~/.claude/skills/react-testing/SKILL.md",
+        source: "custom",
+        category: "code-quality",
+      },
+      {
+        name: "node-debug",
+        desc: "Node debugging",
+        filepath: "~/.claude/skills/node-debug/SKILL.md",
+        source: "custom",
+        category: "debugging",
+      },
     ],
     userMcpServers: [
       { name: "filesystem", type: "stdio", scope: "user", source: "~/.claude/mcp_config.json" },
@@ -130,7 +140,14 @@ function makeFullRaw() {
       "/Users/test/projects/mobile-app": ["old-server"],
     },
     historicalMcpMap: new Map([
-      ["legacy-tool", { name: "legacy-tool", projects: new Set(["/Users/test/projects/old"]), lastSeen: new Date("2025-01-01") }],
+      [
+        "legacy-tool",
+        {
+          name: "legacy-tool",
+          projects: new Set(["/Users/test/projects/old"]),
+          lastSeen: new Date("2025-01-01"),
+        },
+      ],
     ]),
     sessionMetaFiles: [
       {
@@ -143,15 +160,11 @@ function makeFullRaw() {
       },
     ],
     ccusageData: {
-      totals: { totalCost: 12.50, totalTokens: 500000 },
-      daily: [
-        { date: "2026-03-08", totalTokens: 100000 },
-      ],
+      totals: { totalCost: 12.5, totalTokens: 500000 },
+      daily: [{ date: "2026-03-08", totalTokens: 100000 }],
     },
     statsCache: {
-      dailyActivity: [
-        { date: "2026-03-09", messageCount: 30 },
-      ],
+      dailyActivity: [{ date: "2026-03-09", messageCount: 30 }],
     },
     insightsReportHtml: `
       <p class="subtitle">1,386 messages across 117 sessions (365 total) | 2026-02-23 to 2026-03-10</p>
@@ -187,7 +200,19 @@ describe("buildDashboardData()", () => {
     it("classifies repos with commands as configured", () => {
       const raw = makeMinimalRaw({
         repos: [
-          { name: "a", path: "/a", shortPath: "~/a", commands: [{ name: "x", desc: "x" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0, gitRevCount: null },
+          {
+            name: "a",
+            path: "/a",
+            shortPath: "~/a",
+            commands: [{ name: "x", desc: "x" }],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+            gitRevCount: null,
+          },
         ],
       });
       const data = buildDashboardData(raw);
@@ -199,7 +224,19 @@ describe("buildDashboardData()", () => {
     it("classifies repos with rules as configured", () => {
       const raw = makeMinimalRaw({
         repos: [
-          { name: "b", path: "/b", shortPath: "~/b", commands: [], rules: [{ name: "r", desc: "r" }], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0, gitRevCount: null },
+          {
+            name: "b",
+            path: "/b",
+            shortPath: "~/b",
+            commands: [],
+            rules: [{ name: "r", desc: "r" }],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+            gitRevCount: null,
+          },
         ],
       });
       const data = buildDashboardData(raw);
@@ -210,7 +247,19 @@ describe("buildDashboardData()", () => {
     it("classifies repos with agentsFile as configured", () => {
       const raw = makeMinimalRaw({
         repos: [
-          { name: "c", path: "/c", shortPath: "~/c", commands: [], rules: [], agentsFile: "/c/CLAUDE.md", desc: [], sections: [], techStack: [], freshness: 0, gitRevCount: null },
+          {
+            name: "c",
+            path: "/c",
+            shortPath: "~/c",
+            commands: [],
+            rules: [],
+            agentsFile: "/c/CLAUDE.md",
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+            gitRevCount: null,
+          },
         ],
       });
       const data = buildDashboardData(raw);
@@ -220,7 +269,19 @@ describe("buildDashboardData()", () => {
     it("classifies repos without commands, rules, or agentsFile as unconfigured", () => {
       const raw = makeMinimalRaw({
         repos: [
-          { name: "bare", path: "/bare", shortPath: "~/bare", commands: [], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0, gitRevCount: null },
+          {
+            name: "bare",
+            path: "/bare",
+            shortPath: "~/bare",
+            commands: [],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+            gitRevCount: null,
+          },
         ],
       });
       const data = buildDashboardData(raw);
@@ -245,7 +306,19 @@ describe("buildDashboardData()", () => {
       const now = Math.floor(Date.now() / 1000);
       const raw = makeMinimalRaw({
         repos: [
-          { name: "recent", path: "/recent", shortPath: "~/recent", commands: [{ name: "x", desc: "x" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: now - 3600, gitRevCount: 0 },
+          {
+            name: "recent",
+            path: "/recent",
+            shortPath: "~/recent",
+            commands: [{ name: "x", desc: "x" }],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: now - 3600,
+            gitRevCount: 0,
+          },
         ],
       });
       const data = buildDashboardData(raw);
@@ -257,18 +330,45 @@ describe("buildDashboardData()", () => {
       const now = Math.floor(Date.now() / 1000);
       const raw = makeMinimalRaw({
         repos: [
-          { name: "old", path: "/old", shortPath: "~/old", commands: [{ name: "x", desc: "x" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: now - 86400 * 100, gitRevCount: null },
+          {
+            name: "old",
+            path: "/old",
+            shortPath: "~/old",
+            commands: [{ name: "x", desc: "x" }],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: now - 86400 * 100,
+            gitRevCount: null,
+          },
         ],
       });
       const data = buildDashboardData(raw);
       assert.equal(data.configured[0].freshnessClass, "stale");
-      assert.ok(data.configured[0].freshnessText.endsWith("ago") || data.configured[0].freshnessText.endsWith("mo ago"));
+      assert.ok(
+        data.configured[0].freshnessText.endsWith("ago") ||
+          data.configured[0].freshnessText.endsWith("mo ago"),
+      );
     });
 
     it("returns 'unknown' for freshness 0", () => {
       const raw = makeMinimalRaw({
         repos: [
-          { name: "nots", path: "/nots", shortPath: "~/nots", commands: [{ name: "x", desc: "x" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0, gitRevCount: null },
+          {
+            name: "nots",
+            path: "/nots",
+            shortPath: "~/nots",
+            commands: [{ name: "x", desc: "x" }],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+            gitRevCount: null,
+          },
         ],
       });
       const data = buildDashboardData(raw);
@@ -287,19 +387,37 @@ describe("buildDashboardData()", () => {
       assert.ok(webapp.healthScore > 0, "webapp should have a health score");
       assert.ok(apiServer.healthScore > 0, "api-server should have a health score");
       // webapp has more commands, rules, desc, sections than api-server
-      assert.ok(webapp.healthScore > apiServer.healthScore, "webapp should score higher than api-server");
+      assert.ok(
+        webapp.healthScore > apiServer.healthScore,
+        "webapp should score higher than api-server",
+      );
     });
 
     it("includes health reasons for missing config elements", () => {
       const raw = makeMinimalRaw({
         repos: [
-          { name: "sparse", path: "/sparse", shortPath: "~/sparse", commands: [{ name: "x", desc: "x" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0, gitRevCount: null },
+          {
+            name: "sparse",
+            path: "/sparse",
+            shortPath: "~/sparse",
+            commands: [{ name: "x", desc: "x" }],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+            gitRevCount: null,
+          },
         ],
       });
       const data = buildDashboardData(raw);
       const repo = data.configured[0];
       assert.ok(repo.healthReasons.length > 0, "should have reasons for improvement");
-      assert.ok(repo.healthReasons.some((r) => r.includes("CLAUDE.md")), "should suggest adding CLAUDE.md");
+      assert.ok(
+        repo.healthReasons.some((r) => r.includes("CLAUDE.md")),
+        "should suggest adding CLAUDE.md",
+      );
     });
 
     it("caps health score at 100", () => {
@@ -307,12 +425,26 @@ describe("buildDashboardData()", () => {
       const raw = makeMinimalRaw({
         repos: [
           {
-            name: "perfect", path: "/perfect", shortPath: "~/perfect",
-            commands: [{ name: "a", desc: "a" }, { name: "b", desc: "b" }],
-            rules: [{ name: "r1", desc: "r1" }, { name: "r2", desc: "r2" }],
+            name: "perfect",
+            path: "/perfect",
+            shortPath: "~/perfect",
+            commands: [
+              { name: "a", desc: "a" },
+              { name: "b", desc: "b" },
+            ],
+            rules: [
+              { name: "r1", desc: "r1" },
+              { name: "r2", desc: "r2" },
+            ],
             agentsFile: "/perfect/CLAUDE.md",
             desc: ["Full description"],
-            sections: [{ name: "Arch", preview: "" }, { name: "Test", preview: "" }, { name: "Deploy", preview: "" }, { name: "CI", preview: "" }, { name: "Docs", preview: "" }],
+            sections: [
+              { name: "Arch", preview: "" },
+              { name: "Test", preview: "" },
+              { name: "Deploy", preview: "" },
+              { name: "CI", preview: "" },
+              { name: "Docs", preview: "" },
+            ],
             techStack: ["node"],
             freshness: now - 3600, // fresh
             gitRevCount: 0,
@@ -330,7 +462,19 @@ describe("buildDashboardData()", () => {
     it("classifies null gitRevCount as unknown", () => {
       const raw = makeMinimalRaw({
         repos: [
-          { name: "a", path: "/a", shortPath: "~/a", commands: [{ name: "x", desc: "x" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0, gitRevCount: null },
+          {
+            name: "a",
+            path: "/a",
+            shortPath: "~/a",
+            commands: [{ name: "x", desc: "x" }],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+            gitRevCount: null,
+          },
         ],
       });
       const data = buildDashboardData(raw);
@@ -340,7 +484,18 @@ describe("buildDashboardData()", () => {
     it("classifies undefined gitRevCount as unknown", () => {
       const raw = makeMinimalRaw({
         repos: [
-          { name: "a", path: "/a", shortPath: "~/a", commands: [{ name: "x", desc: "x" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0 },
+          {
+            name: "a",
+            path: "/a",
+            shortPath: "~/a",
+            commands: [{ name: "x", desc: "x" }],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+          },
         ],
       });
       const data = buildDashboardData(raw);
@@ -350,7 +505,19 @@ describe("buildDashboardData()", () => {
     it("classifies gitRevCount 0 as synced", () => {
       const raw = makeMinimalRaw({
         repos: [
-          { name: "a", path: "/a", shortPath: "~/a", commands: [{ name: "x", desc: "x" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0, gitRevCount: 0 },
+          {
+            name: "a",
+            path: "/a",
+            shortPath: "~/a",
+            commands: [{ name: "x", desc: "x" }],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+            gitRevCount: 0,
+          },
         ],
       });
       const data = buildDashboardData(raw);
@@ -362,7 +529,19 @@ describe("buildDashboardData()", () => {
       for (const count of [1, 3, 5]) {
         const raw = makeMinimalRaw({
           repos: [
-            { name: "a", path: "/a", shortPath: "~/a", commands: [{ name: "x", desc: "x" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0, gitRevCount: count },
+            {
+              name: "a",
+              path: "/a",
+              shortPath: "~/a",
+              commands: [{ name: "x", desc: "x" }],
+              rules: [],
+              agentsFile: null,
+              desc: [],
+              sections: [],
+              techStack: [],
+              freshness: 0,
+              gitRevCount: count,
+            },
           ],
         });
         const data = buildDashboardData(raw);
@@ -375,11 +554,27 @@ describe("buildDashboardData()", () => {
       for (const count of [6, 12, 20]) {
         const raw = makeMinimalRaw({
           repos: [
-            { name: "a", path: "/a", shortPath: "~/a", commands: [{ name: "x", desc: "x" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0, gitRevCount: count },
+            {
+              name: "a",
+              path: "/a",
+              shortPath: "~/a",
+              commands: [{ name: "x", desc: "x" }],
+              rules: [],
+              agentsFile: null,
+              desc: [],
+              sections: [],
+              techStack: [],
+              freshness: 0,
+              gitRevCount: count,
+            },
           ],
         });
         const data = buildDashboardData(raw);
-        assert.equal(data.configured[0].drift.level, "medium", `gitRevCount ${count} should be medium`);
+        assert.equal(
+          data.configured[0].drift.level,
+          "medium",
+          `gitRevCount ${count} should be medium`,
+        );
       }
     });
 
@@ -387,7 +582,19 @@ describe("buildDashboardData()", () => {
       for (const count of [21, 25, 100]) {
         const raw = makeMinimalRaw({
           repos: [
-            { name: "a", path: "/a", shortPath: "~/a", commands: [{ name: "x", desc: "x" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0, gitRevCount: count },
+            {
+              name: "a",
+              path: "/a",
+              shortPath: "~/a",
+              commands: [{ name: "x", desc: "x" }],
+              rules: [],
+              agentsFile: null,
+              desc: [],
+              sections: [],
+              techStack: [],
+              freshness: 0,
+              gitRevCount: count,
+            },
           ],
         });
         const data = buildDashboardData(raw);
@@ -398,7 +605,19 @@ describe("buildDashboardData()", () => {
     it("classifies negative gitRevCount as unknown", () => {
       const raw = makeMinimalRaw({
         repos: [
-          { name: "a", path: "/a", shortPath: "~/a", commands: [{ name: "x", desc: "x" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0, gitRevCount: -1 },
+          {
+            name: "a",
+            path: "/a",
+            shortPath: "~/a",
+            commands: [{ name: "x", desc: "x" }],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+            gitRevCount: -1,
+          },
         ],
       });
       const data = buildDashboardData(raw);
@@ -423,9 +642,42 @@ describe("buildDashboardData()", () => {
     it("sorts unconfigured repos alphabetically", () => {
       const raw = makeMinimalRaw({
         repos: [
-          { name: "zeta", path: "/z", shortPath: "~/z", commands: [], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0 },
-          { name: "alpha", path: "/a", shortPath: "~/a", commands: [], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0 },
-          { name: "beta", path: "/b", shortPath: "~/b", commands: [], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0 },
+          {
+            name: "zeta",
+            path: "/z",
+            shortPath: "~/z",
+            commands: [],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+          },
+          {
+            name: "alpha",
+            path: "/a",
+            shortPath: "~/a",
+            commands: [],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+          },
+          {
+            name: "beta",
+            path: "/b",
+            shortPath: "~/b",
+            commands: [],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+          },
         ],
       });
       const data = buildDashboardData(raw);
@@ -448,8 +700,32 @@ describe("buildDashboardData()", () => {
     it("sets empty suggestions when no tech stack overlap exists", () => {
       const raw = makeMinimalRaw({
         repos: [
-          { name: "configured", path: "/c", shortPath: "~/c", commands: [{ name: "x", desc: "x" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: ["rust"], freshness: 0, gitRevCount: null },
-          { name: "unconfigured", path: "/u", shortPath: "~/u", commands: [], rules: [], agentsFile: null, desc: [], sections: [], techStack: ["python"], freshness: 0, gitRevCount: null },
+          {
+            name: "configured",
+            path: "/c",
+            shortPath: "~/c",
+            commands: [{ name: "x", desc: "x" }],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: ["rust"],
+            freshness: 0,
+            gitRevCount: null,
+          },
+          {
+            name: "unconfigured",
+            path: "/u",
+            shortPath: "~/u",
+            commands: [],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: ["python"],
+            freshness: 0,
+            gitRevCount: null,
+          },
         ],
       });
       const data = buildDashboardData(raw);
@@ -478,7 +754,10 @@ describe("buildDashboardData()", () => {
     it("limits similarRepos to at most 2 entries", () => {
       const data = buildDashboardData(makeFullRaw());
       for (const repo of data.configured) {
-        assert.ok(repo.similarRepos.length <= 2, `${repo.name} should have at most 2 similar repos`);
+        assert.ok(
+          repo.similarRepos.length <= 2,
+          `${repo.name} should have at most 2 similar repos`,
+        );
       }
     });
 
@@ -518,14 +797,20 @@ describe("buildDashboardData()", () => {
       const data = buildDashboardData(makeFullRaw());
       const webapp = data.configured.find((r) => r.name === "webapp");
       const matched = webapp.matchedSkills.map((s) => s.name);
-      assert.ok(matched.includes("react-testing"), "webapp (react stack) should match react-testing skill");
+      assert.ok(
+        matched.includes("react-testing"),
+        "webapp (react stack) should match react-testing skill",
+      );
     });
 
     it("matches node-debug skill to repos with node tech stack", () => {
       const data = buildDashboardData(makeFullRaw());
       const apiServer = data.configured.find((r) => r.name === "api-server");
       const matched = apiServer.matchedSkills.map((s) => s.name);
-      assert.ok(matched.includes("node-debug"), "api-server (node stack) should match node-debug skill");
+      assert.ok(
+        matched.includes("node-debug"),
+        "api-server (node stack) should match node-debug skill",
+      );
     });
 
     it("returns empty matchedSkills when no global skills provided", () => {
@@ -553,7 +838,10 @@ describe("buildDashboardData()", () => {
       const data = buildDashboardData(makeFullRaw());
       for (const group of data.consolidationGroups) {
         assert.ok(group.suggestion.includes("repos with"), "suggestion should describe the group");
-        assert.ok(group.suggestion.includes("avg similarity"), "suggestion should mention similarity");
+        assert.ok(
+          group.suggestion.includes("avg similarity"),
+          "suggestion should mention similarity",
+        );
       }
     });
 
@@ -568,8 +856,32 @@ describe("buildDashboardData()", () => {
     it("returns no consolidation groups when fewer than 3 repos share a stack", () => {
       const raw = makeMinimalRaw({
         repos: [
-          { name: "a", path: "/a", shortPath: "~/a", commands: [{ name: "x", desc: "x" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: ["ruby"], freshness: 0, gitRevCount: null },
-          { name: "b", path: "/b", shortPath: "~/b", commands: [{ name: "x", desc: "x" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: ["ruby"], freshness: 0, gitRevCount: null },
+          {
+            name: "a",
+            path: "/a",
+            shortPath: "~/a",
+            commands: [{ name: "x", desc: "x" }],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: ["ruby"],
+            freshness: 0,
+            gitRevCount: null,
+          },
+          {
+            name: "b",
+            path: "/b",
+            shortPath: "~/b",
+            commands: [{ name: "x", desc: "x" }],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: ["ruby"],
+            freshness: 0,
+            gitRevCount: null,
+          },
         ],
       });
       const data = buildDashboardData(raw);
@@ -610,7 +922,11 @@ describe("buildDashboardData()", () => {
       const data = buildDashboardData(makeFullRaw());
       // "filesystem" is at user level AND in dashboard project config
       const fsPromotion = data.mcpPromotions.find((p) => p.name === "filesystem");
-      assert.equal(fsPromotion, undefined, "filesystem is already user-level, should not be promoted");
+      assert.equal(
+        fsPromotion,
+        undefined,
+        "filesystem is already user-level, should not be promoted",
+      );
     });
 
     it("attaches mcpServers to matching repos", () => {
@@ -644,7 +960,10 @@ describe("buildDashboardData()", () => {
       assert.ok(data.insightsReport, "should have parsed insights report");
       assert.ok(data.insightsReport.subtitle, "should have subtitle");
       // ISO dates should be reformatted to readable dates
-      assert.ok(!data.insightsReport.subtitle.includes("2026-02-23"), "ISO dates should be reformatted");
+      assert.ok(
+        !data.insightsReport.subtitle.includes("2026-02-23"),
+        "ISO dates should be reformatted",
+      );
       assert.ok(data.insightsReport.subtitle.includes("Feb"), "should contain month abbreviation");
     });
 
@@ -675,7 +994,10 @@ describe("buildDashboardData()", () => {
       const data = buildDashboardData(makeFullRaw());
       assert.equal(data.insightsReport.friction.length, 1);
       assert.equal(data.insightsReport.friction[0].title, "Long context windows");
-      assert.equal(data.insightsReport.friction[0].desc, "Sessions frequently exceed context limits");
+      assert.equal(
+        data.insightsReport.friction[0].desc,
+        "Sessions frequently exceed context limits",
+      );
     });
 
     it("returns null insightsReport when no HTML provided", () => {
@@ -699,7 +1021,10 @@ describe("buildDashboardData()", () => {
       const driftInsight = data.insights.find((i) => i.title.includes("config drift"));
       assert.ok(driftInsight, "should generate drift alert");
       assert.equal(driftInsight.type, "warning");
-      assert.ok(driftInsight.detail.includes("api-server"), "should mention api-server (high drift)");
+      assert.ok(
+        driftInsight.detail.includes("api-server"),
+        "should mention api-server (high drift)",
+      );
     });
 
     it("generates MCP promotion insight", () => {
@@ -711,7 +1036,9 @@ describe("buildDashboardData()", () => {
 
     it("generates redundant MCP insight when user-level server is also in project config", () => {
       const data = buildDashboardData(makeFullRaw());
-      const redundant = data.insights.find((i) => i.type === "tip" && i.title.includes("global but also"));
+      const redundant = data.insights.find(
+        (i) => i.type === "tip" && i.title.includes("global but also"),
+      );
       assert.ok(redundant, "should generate redundant MCP insight");
       assert.ok(redundant.detail.includes("filesystem"), "should mention filesystem");
     });
@@ -725,7 +1052,9 @@ describe("buildDashboardData()", () => {
 
     it("does not generate insights report nudge when report exists", () => {
       const data = buildDashboardData(makeFullRaw());
-      const nudge = data.insights.find((i) => i.title.includes("Generate your Claude Code Insights"));
+      const nudge = data.insights.find((i) =>
+        i.title.includes("Generate your Claude Code Insights"),
+      );
       assert.equal(nudge, undefined, "should not nudge when insights report is present");
     });
 
@@ -733,17 +1062,64 @@ describe("buildDashboardData()", () => {
       const raw = makeFullRaw();
       raw.insightsReportHtml = null;
       const data = buildDashboardData(raw);
-      const nudge = data.insights.find((i) => i.title.includes("Generate your Claude Code Insights"));
+      const nudge = data.insights.find((i) =>
+        i.title.includes("Generate your Claude Code Insights"),
+      );
       assert.ok(nudge, "should nudge to generate insights report");
     });
 
     it("generates coverage insight when unconfigured % is >= 40%", () => {
       const raw = makeMinimalRaw({
         repos: [
-          { name: "conf", path: "/c", shortPath: "~/c", commands: [{ name: "x", desc: "x" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0, gitRevCount: null },
-          { name: "u1", path: "/u1", shortPath: "~/u1", commands: [], rules: [], agentsFile: null, desc: [], sections: [], techStack: ["node"], freshness: 0 },
-          { name: "u2", path: "/u2", shortPath: "~/u2", commands: [], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0 },
-          { name: "u3", path: "/u3", shortPath: "~/u3", commands: [], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0 },
+          {
+            name: "conf",
+            path: "/c",
+            shortPath: "~/c",
+            commands: [{ name: "x", desc: "x" }],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+            gitRevCount: null,
+          },
+          {
+            name: "u1",
+            path: "/u1",
+            shortPath: "~/u1",
+            commands: [],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: ["node"],
+            freshness: 0,
+          },
+          {
+            name: "u2",
+            path: "/u2",
+            shortPath: "~/u2",
+            commands: [],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+          },
+          {
+            name: "u3",
+            path: "/u3",
+            shortPath: "~/u3",
+            commands: [],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+          },
         ],
       });
       const data = buildDashboardData(raw);
@@ -756,10 +1132,57 @@ describe("buildDashboardData()", () => {
     it("does not generate coverage insight when unconfigured % is < 40%", () => {
       const raw = makeMinimalRaw({
         repos: [
-          { name: "c1", path: "/c1", shortPath: "~/c1", commands: [{ name: "x", desc: "x" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0, gitRevCount: null },
-          { name: "c2", path: "/c2", shortPath: "~/c2", commands: [{ name: "y", desc: "y" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0, gitRevCount: null },
-          { name: "c3", path: "/c3", shortPath: "~/c3", commands: [{ name: "z", desc: "z" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0, gitRevCount: null },
-          { name: "u1", path: "/u1", shortPath: "~/u1", commands: [], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0 },
+          {
+            name: "c1",
+            path: "/c1",
+            shortPath: "~/c1",
+            commands: [{ name: "x", desc: "x" }],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+            gitRevCount: null,
+          },
+          {
+            name: "c2",
+            path: "/c2",
+            shortPath: "~/c2",
+            commands: [{ name: "y", desc: "y" }],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+            gitRevCount: null,
+          },
+          {
+            name: "c3",
+            path: "/c3",
+            shortPath: "~/c3",
+            commands: [{ name: "z", desc: "z" }],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+            gitRevCount: null,
+          },
+          {
+            name: "u1",
+            path: "/u1",
+            shortPath: "~/u1",
+            commands: [],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+          },
         ],
       });
       const data = buildDashboardData(raw);
@@ -774,7 +1197,9 @@ describe("buildDashboardData()", () => {
       const skillInsight = data.insights.find((i) => i.title.includes("skill"));
       assert.ok(skillInsight, "should generate skill sharing insight");
       assert.equal(skillInsight.type, "info");
-      assert.ok(skillInsight.detail.includes("react-testing") || skillInsight.detail.includes("repos"));
+      assert.ok(
+        skillInsight.detail.includes("react-testing") || skillInsight.detail.includes("repos"),
+      );
     });
   });
 
@@ -834,8 +1259,32 @@ describe("buildDashboardData()", () => {
     it("appends __2 suffix for duplicate names", () => {
       const raw = makeMinimalRaw({
         repos: [
-          { name: "myrepo", path: "/a/myrepo", shortPath: "~/a/myrepo", commands: [{ name: "x", desc: "x" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0, gitRevCount: null },
-          { name: "myrepo", path: "/b/myrepo", shortPath: "~/b/myrepo", commands: [{ name: "y", desc: "y" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0, gitRevCount: null },
+          {
+            name: "myrepo",
+            path: "/a/myrepo",
+            shortPath: "~/a/myrepo",
+            commands: [{ name: "x", desc: "x" }],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+            gitRevCount: null,
+          },
+          {
+            name: "myrepo",
+            path: "/b/myrepo",
+            shortPath: "~/b/myrepo",
+            commands: [{ name: "y", desc: "y" }],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+            gitRevCount: null,
+          },
         ],
       });
       const data = buildDashboardData(raw);
@@ -847,9 +1296,45 @@ describe("buildDashboardData()", () => {
     it("appends __3 suffix for third duplicate name", () => {
       const raw = makeMinimalRaw({
         repos: [
-          { name: "dup", path: "/x/dup", shortPath: "~/x/dup", commands: [{ name: "x", desc: "x" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0, gitRevCount: null },
-          { name: "dup", path: "/y/dup", shortPath: "~/y/dup", commands: [{ name: "y", desc: "y" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0, gitRevCount: null },
-          { name: "dup", path: "/z/dup", shortPath: "~/z/dup", commands: [{ name: "z", desc: "z" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0, gitRevCount: null },
+          {
+            name: "dup",
+            path: "/x/dup",
+            shortPath: "~/x/dup",
+            commands: [{ name: "x", desc: "x" }],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+            gitRevCount: null,
+          },
+          {
+            name: "dup",
+            path: "/y/dup",
+            shortPath: "~/y/dup",
+            commands: [{ name: "y", desc: "y" }],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+            gitRevCount: null,
+          },
+          {
+            name: "dup",
+            path: "/z/dup",
+            shortPath: "~/z/dup",
+            commands: [{ name: "z", desc: "z" }],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+            gitRevCount: null,
+          },
         ],
       });
       const data = buildDashboardData(raw);
@@ -862,8 +1347,31 @@ describe("buildDashboardData()", () => {
     it("handles collision across configured and unconfigured repos", () => {
       const raw = makeMinimalRaw({
         repos: [
-          { name: "shared", path: "/a/shared", shortPath: "~/a/shared", commands: [{ name: "x", desc: "x" }], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0, gitRevCount: null },
-          { name: "shared", path: "/b/shared", shortPath: "~/b/shared", commands: [], rules: [], agentsFile: null, desc: [], sections: [], techStack: [], freshness: 0 },
+          {
+            name: "shared",
+            path: "/a/shared",
+            shortPath: "~/a/shared",
+            commands: [{ name: "x", desc: "x" }],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+            gitRevCount: null,
+          },
+          {
+            name: "shared",
+            path: "/b/shared",
+            shortPath: "~/b/shared",
+            commands: [],
+            rules: [],
+            agentsFile: null,
+            desc: [],
+            sections: [],
+            techStack: [],
+            freshness: 0,
+          },
         ],
       });
       const data = buildDashboardData(raw);
@@ -900,7 +1408,7 @@ describe("buildDashboardData()", () => {
     it("passes through ccusageData", () => {
       const data = buildDashboardData(makeFullRaw());
       assert.ok(data.ccusageData);
-      assert.equal(data.ccusageData.totals.totalCost, 12.50);
+      assert.equal(data.ccusageData.totals.totalCost, 12.5);
     });
 
     it("supplements statsCache dailyActivity from session meta and ccusage", () => {
@@ -924,7 +1432,11 @@ describe("buildDashboardData()", () => {
       const raw = makeFullRaw();
       const originalLength = raw.statsCache.dailyActivity.length;
       buildDashboardData(raw);
-      assert.equal(raw.statsCache.dailyActivity.length, originalLength, "raw.statsCache should not be mutated");
+      assert.equal(
+        raw.statsCache.dailyActivity.length,
+        originalLength,
+        "raw.statsCache should not be mutated",
+      );
     });
   });
 });
