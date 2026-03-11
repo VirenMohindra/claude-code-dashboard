@@ -20,7 +20,16 @@ import { execFileSync, execFile } from "child_process";
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from "fs";
 import { join, basename, dirname } from "path";
 
-import { VERSION, HOME, CLAUDE_DIR, DEFAULT_OUTPUT, CONF, MAX_DEPTH } from "./src/constants.mjs";
+import {
+  VERSION,
+  HOME,
+  CLAUDE_DIR,
+  DEFAULT_OUTPUT,
+  CONF,
+  MAX_DEPTH,
+  REPO_URL,
+  SIMILARITY_THRESHOLD,
+} from "./src/constants.mjs";
 import { parseArgs, generateCompletions } from "./src/cli.mjs";
 import { shortPath } from "./src/helpers.mjs";
 import { anonymizeAll } from "./src/anonymize.mjs";
@@ -46,6 +55,7 @@ import {
   parseProjectMcpConfig,
   findPromotionCandidates,
   scanHistoricalMcpServers,
+  classifyHistoricalServers,
 } from "./src/mcp.mjs";
 import { aggregateSessionMeta } from "./src/usage.mjs";
 import { handleInit } from "./src/templates.mjs";
@@ -69,7 +79,15 @@ if (cliArgs.demo) {
   const outputPath = cliArgs.output;
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, html);
-  if (!cliArgs.quiet) console.log(outputPath);
+
+  if (!cliArgs.quiet) {
+    const sp = shortPath(outputPath);
+    console.log(`\n  claude-code-dashboard v${VERSION} (demo mode)\n`);
+    console.log(`  ✓ ${sp}`);
+    if (cliArgs.open) console.log(`  ✓ opening in browser`);
+    console.log(`\n  ${REPO_URL}`);
+    console.log();
+  }
 
   if (cliArgs.open) {
     const cmd =
@@ -185,7 +203,7 @@ for (const repo of configured) {
   const similar = configured
     .filter((r) => r !== repo)
     .map((r) => ({ name: r.name, similarity: computeConfigSimilarity(repo, r) }))
-    .filter((r) => r.similarity >= 40)
+    .filter((r) => r.similarity >= SIMILARITY_THRESHOLD)
     .sort((a, b) => b.similarity - a.similarity)
     .slice(0, 2);
   repo.similarRepos = similar;
@@ -317,19 +335,41 @@ for (const s of allMcpServers) {
 for (const entry of Object.values(mcpByName)) {
   entry.disabledIn = disabledByServer[entry.name] || 0;
 }
+
+const historicalMcpMap = scanHistoricalMcpServers(CLAUDE_DIR);
+const currentMcpNames = new Set(allMcpServers.map((s) => s.name));
+const { recent: recentMcpServers, former: formerMcpServers } = classifyHistoricalServers(
+  historicalMcpMap,
+  currentMcpNames,
+);
+
+// Normalize all historical project paths
+for (const server of [...recentMcpServers, ...formerMcpServers]) {
+  server.projects = server.projects.map((p) => shortPath(p));
+}
+
+// Merge recently-seen servers into allMcpServers so they show up as current
+for (const server of recentMcpServers) {
+  if (!mcpByName[server.name]) {
+    mcpByName[server.name] = {
+      name: server.name,
+      type: "unknown",
+      projects: server.projects,
+      userLevel: false,
+      disabledIn: disabledByServer[server.name] || 0,
+      recentlyActive: true,
+    };
+  }
+}
 const mcpSummary = Object.values(mcpByName).sort((a, b) => {
   if (a.userLevel !== b.userLevel) return a.userLevel ? -1 : 1;
   return a.name.localeCompare(b.name);
 });
 const mcpCount = mcpSummary.length;
 
-const historicalMcpNames = scanHistoricalMcpServers(CLAUDE_DIR);
-const currentMcpNames = new Set(allMcpServers.map((s) => s.name));
-const formerMcpServers = historicalMcpNames.filter((name) => !currentMcpNames.has(name)).sort();
-
 // ── Usage Analytics ──────────────────────────────────────────────────────────
 
-const SESSION_META_LIMIT = 500;
+const SESSION_META_LIMIT = 1000;
 const sessionMetaDir = join(CLAUDE_DIR, "usage-data", "session-meta");
 const sessionMetaFiles = [];
 if (existsSync(sessionMetaDir)) {
@@ -651,7 +691,21 @@ const html = generateDashboardHtml({
 const outputPath = cliArgs.output;
 mkdirSync(dirname(outputPath), { recursive: true });
 writeFileSync(outputPath, html);
-if (!cliArgs.quiet) console.log(outputPath);
+
+if (!cliArgs.quiet) {
+  const sp = shortPath(outputPath);
+  console.log(`\n  claude-code-dashboard v${VERSION}\n`);
+  console.log(
+    `  ${configuredCount} configured · ${unconfiguredCount} unconfigured · ${totalRepos} repos`,
+  );
+  console.log(
+    `  ${globalCmds.length} global commands · ${globalSkills.length} skills · ${mcpCount} MCP servers`,
+  );
+  console.log(`\n  ✓ ${sp}`);
+  if (cliArgs.open) console.log(`  ✓ opening in browser`);
+  console.log(`\n  ${REPO_URL}`);
+  console.log();
+}
 
 if (cliArgs.open) {
   const cmd =

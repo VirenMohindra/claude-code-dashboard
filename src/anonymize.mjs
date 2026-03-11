@@ -205,9 +205,13 @@ export function anonymizeAll({
     });
   }
 
-  // Former MCP servers — anonymize names
+  // Former MCP servers — anonymize names and projects
   for (let i = 0; i < formerMcpServers.length; i++) {
-    formerMcpServers[i] = `former-server-${i + 1}`;
+    formerMcpServers[i] = {
+      name: `former-server-${i + 1}`,
+      projects: (formerMcpServers[i].projects || []).map(() => `~/project-${i + 1}`),
+      lastSeen: formerMcpServers[i].lastSeen,
+    };
   }
 
   // Consolidation groups

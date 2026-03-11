@@ -130,6 +130,15 @@ export function renderRepoCard(repo) {
       .join("")}</div>`;
   }
 
+  if (repo.similarRepos && repo.similarRepos.length) {
+    body += `<div class="label">Similar Configs</div>`;
+    body += `<div class="similar-repos">${repo.similarRepos
+      .map(
+        (r) => `<span class="similar-repo">${esc(r.name)} <small>${r.similarity}%</small></span>`,
+      )
+      .join("")}</div>`;
+  }
+
   if (repo.sections.length) {
     body += `<div class="label">Agent Config</div>`;
     body += renderSections(repo.sections);

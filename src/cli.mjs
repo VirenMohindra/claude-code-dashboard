@@ -3,7 +3,7 @@ import { VERSION, DEFAULT_OUTPUT, HOME } from "./constants.mjs";
 export function parseArgs(argv) {
   const args = {
     output: DEFAULT_OUTPUT,
-    open: false,
+    open: process.stdout.isTTY !== false,
     json: false,
     catalog: false,
     command: null,
@@ -40,7 +40,8 @@ Options:
   --output, -o <path>  Output path (default: ~/.claude/dashboard.html)
   --json               Output full data model as JSON instead of HTML
   --catalog            Generate a shareable skill catalog HTML page
-  --open               Open the dashboard in your default browser after generating
+  --open               Open in browser after generating (default: true)
+  --no-open            Skip opening in browser
   --quiet              Suppress output, just write file
   --watch              Regenerate on file changes
   --diff               Show changes since last generation
@@ -86,6 +87,9 @@ Config file: ~/.claude/dashboard.conf
       case "--open":
         args.open = true;
         break;
+      case "--no-open":
+        args.open = false;
+        break;
       case "--template":
       case "-t":
         args.template = argv[++i];
@@ -129,11 +133,11 @@ export function generateCompletions() {
 # eval "$(claude-code-dashboard --completions)"
 if [ -n "$ZSH_VERSION" ]; then
   _claude_code_dashboard() {
-    local -a opts; opts=(init lint --output --open --json --catalog --quiet --watch --diff --anonymize --demo --completions --help --version)
+    local -a opts; opts=(init lint --output --open --no-open --json --catalog --quiet --watch --diff --anonymize --demo --completions --help --version)
     if (( CURRENT == 2 )); then _describe 'option' opts; fi
   }; compdef _claude_code_dashboard claude-code-dashboard
 elif [ -n "$BASH_VERSION" ]; then
-  _claude_code_dashboard() { COMPREPLY=( $(compgen -W "init lint --output --open --json --catalog --quiet --watch --diff --anonymize --demo --completions --help --version" -- "\${COMP_WORDS[COMP_CWORD]}") ); }
+  _claude_code_dashboard() { COMPREPLY=( $(compgen -W "init lint --output --open --no-open --json --catalog --quiet --watch --diff --anonymize --demo --completions --help --version" -- "\${COMP_WORDS[COMP_CWORD]}") ); }
   complete -F _claude_code_dashboard claude-code-dashboard
 fi`);
   process.exit(0);
