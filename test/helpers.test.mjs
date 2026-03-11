@@ -354,8 +354,20 @@ describe("categorizeSkill()", () => {
 // ── CLI Argument Parsing ────────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const args = { output: "default.html", open: false, json: false, catalog: false };
+  const args = {
+    output: "default.html",
+    open: false,
+    json: false,
+    catalog: false,
+    command: null,
+    template: null,
+    dryRun: false,
+  };
   let i = 2;
+  if (argv[2] === "init") {
+    args.command = "init";
+    i = 3;
+  }
   while (i < argv.length) {
     switch (argv[i]) {
       case "--help":
@@ -378,6 +390,13 @@ function parseArgs(argv) {
         break;
       case "--catalog":
         args.catalog = true;
+        break;
+      case "--template":
+      case "-t":
+        args.template = argv[++i];
+        break;
+      case "--dry-run":
+        args.dryRun = true;
         break;
       default:
         args.error = argv[i];
@@ -423,6 +442,34 @@ describe("parseArgs()", () => {
   it("handles unknown flags", () => {
     const args = parseArgs(["node", "script", "--bogus"]);
     assert.equal(args.error, "--bogus");
+  });
+
+  it("parses init subcommand", () => {
+    const args = parseArgs(["node", "script", "init"]);
+    assert.equal(args.command, "init");
+  });
+
+  it("parses init with --template", () => {
+    const args = parseArgs(["node", "script", "init", "--template", "next"]);
+    assert.equal(args.command, "init");
+    assert.equal(args.template, "next");
+  });
+
+  it("returns undefined template when --template has no value", () => {
+    const args = parseArgs(["node", "script", "init", "--template"]);
+    assert.equal(args.command, "init");
+    assert.equal(args.template, undefined);
+  });
+
+  it("defaults command to null", () => {
+    const args = parseArgs(["node", "script"]);
+    assert.equal(args.command, null);
+  });
+
+  it("parses init with --dry-run", () => {
+    const args = parseArgs(["node", "script", "init", "--dry-run"]);
+    assert.equal(args.command, "init");
+    assert.equal(args.dryRun, true);
   });
 });
 
@@ -854,5 +901,123 @@ describe("generateSuggestions()", () => {
       rules: [],
     });
     assert.deepEqual(result, []);
+  });
+});
+
+// ── Config Pattern Detection ────────────────────────────────────────────────
+
+function detectConfigPattern(repo) {
+  if (repo.rules.length >= 3) return "modular";
+  if (repo.sections.length >= 3) return "monolithic";
+  if (repo.commands.length >= 2 && repo.sections.length === 0) return "command-heavy";
+  return "minimal";
+}
+
+describe("detectConfigPattern()", () => {
+  it("detects modular pattern", () => {
+    assert.equal(detectConfigPattern({ rules: [1, 2, 3], sections: [], commands: [] }), "modular");
+  });
+
+  it("detects monolithic pattern", () => {
+    assert.equal(
+      detectConfigPattern({ rules: [], sections: [1, 2, 3], commands: [] }),
+      "monolithic",
+    );
+  });
+
+  it("detects command-heavy pattern", () => {
+    assert.equal(
+      detectConfigPattern({ rules: [], sections: [], commands: [1, 2] }),
+      "command-heavy",
+    );
+  });
+
+  it("detects minimal pattern", () => {
+    assert.equal(detectConfigPattern({ rules: [], sections: [], commands: [] }), "minimal");
+  });
+
+  it("prefers modular over monolithic when both", () => {
+    assert.equal(
+      detectConfigPattern({ rules: [1, 2, 3], sections: [1, 2, 3], commands: [] }),
+      "modular",
+    );
+  });
+});
+
+// ── Config Similarity ───────────────────────────────────────────────────────
+
+function computeConfigSimilarity(repoA, repoB) {
+  if (!repoA || !repoB) return 0;
+  let matches = 0;
+  let total = 0;
+
+  const sectionsA = new Set((repoA.sections || []).map((s) => s.name || s));
+  const sectionsB = new Set((repoB.sections || []).map((s) => s.name || s));
+  if (sectionsA.size > 0 || sectionsB.size > 0) {
+    const intersection = [...sectionsA].filter((s) => sectionsB.has(s)).length;
+    const union = new Set([...sectionsA, ...sectionsB]).size;
+    matches += intersection;
+    total += union;
+  }
+
+  const stackA = new Set(repoA.techStack || []);
+  const stackB = new Set(repoB.techStack || []);
+  if (stackA.size > 0 || stackB.size > 0) {
+    const intersection = [...stackA].filter((s) => stackB.has(s)).length;
+    const union = new Set([...stackA, ...stackB]).size;
+    matches += intersection;
+    total += union;
+  }
+
+  if (repoA.configPattern && repoA.configPattern === repoB.configPattern) {
+    matches += 1;
+    total += 1;
+  } else {
+    total += 1;
+  }
+
+  return total > 0 ? Math.round((matches / total) * 100) : 0;
+}
+
+describe("computeConfigSimilarity()", () => {
+  it("returns 100 for identical repos", () => {
+    const repo = {
+      sections: ["Architecture", "Commands"],
+      techStack: ["next"],
+      configPattern: "monolithic",
+    };
+    assert.equal(computeConfigSimilarity(repo, repo), 100);
+  });
+
+  it("returns 0 for completely different repos", () => {
+    const a = { sections: ["Architecture"], techStack: ["next"], configPattern: "monolithic" };
+    const b = { sections: ["Setup"], techStack: ["python"], configPattern: "modular" };
+    assert.equal(computeConfigSimilarity(a, b), 0);
+  });
+
+  it("returns partial score for some overlap", () => {
+    const a = {
+      sections: ["Architecture", "Commands"],
+      techStack: ["next"],
+      configPattern: "monolithic",
+    };
+    const b = {
+      sections: ["Architecture", "Testing"],
+      techStack: ["next"],
+      configPattern: "monolithic",
+    };
+    const score = computeConfigSimilarity(a, b);
+    assert.ok(score > 0 && score < 100);
+  });
+
+  it("returns 0 for null inputs", () => {
+    assert.equal(computeConfigSimilarity(null, {}), 0);
+    assert.equal(computeConfigSimilarity({}, null), 0);
+  });
+
+  it("handles empty sections and stacks", () => {
+    const a = { sections: [], techStack: [], configPattern: "minimal" };
+    const b = { sections: [], techStack: [], configPattern: "minimal" };
+    assert.equal(computeConfigSimilarity(a, b), 100);
   });
 });

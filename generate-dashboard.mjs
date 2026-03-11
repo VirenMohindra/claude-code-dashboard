@@ -32,7 +32,7 @@ import { homedir } from "os";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const VERSION = "0.3.2";
+const VERSION = "0.4.0";
 
 const HOME = homedir();
 const CLAUDE_DIR = join(HOME, ".claude");
@@ -94,8 +94,20 @@ const BOILERPLATE_RE = new RegExp(BOILERPLATE_PATTERNS.join("|"));
 // ── CLI Argument Parsing ─────────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const args = { output: DEFAULT_OUTPUT, open: false, json: false, catalog: false };
+  const args = {
+    output: DEFAULT_OUTPUT,
+    open: false,
+    json: false,
+    catalog: false,
+    command: null,
+    template: null,
+    dryRun: false,
+  };
   let i = 2; // skip node + script
+  if (argv[2] === "init") {
+    args.command = "init";
+    i = 3;
+  }
   while (i < argv.length) {
     switch (argv[i]) {
       case "--help":
@@ -115,6 +127,11 @@ Options:
   --open               Open the dashboard in your default browser after generating
   --version, -v        Show version
   --help, -h           Show this help
+
+Subcommands:
+  init                 Scaffold Claude Code config for current directory
+    --template, -t <stack>  Override auto-detected stack (next, react, python, etc.)
+    --dry-run               Preview what would be created without writing files
 
 Config file: ~/.claude/dashboard.conf
   Add directories (one per line) to restrict scanning scope.
@@ -146,6 +163,17 @@ Config file: ~/.claude/dashboard.conf
       case "--open":
         args.open = true;
         break;
+      case "--template":
+      case "-t":
+        args.template = argv[++i];
+        if (!args.template) {
+          console.error("Error: --template requires a stack argument");
+          process.exit(1);
+        }
+        break;
+      case "--dry-run":
+        args.dryRun = true;
+        break;
       default:
         console.error(`Unknown option: ${argv[i]}\nRun with --help for usage.`);
         process.exit(1);
@@ -156,6 +184,237 @@ Config file: ~/.claude/dashboard.conf
 }
 
 const cliArgs = parseArgs(process.argv);
+
+// ── Tech Stack Detection (const, must precede init handler) ─────────────────
+
+const STACK_FILES = {
+  "next.config.js": "next",
+  "next.config.mjs": "next",
+  "next.config.ts": "next",
+  "Cargo.toml": "rust",
+  "go.mod": "go",
+  "requirements.txt": "python",
+  "pyproject.toml": "python",
+  "setup.py": "python",
+  "Package.swift": "swift",
+  Gemfile: "ruby",
+  "pom.xml": "java",
+  "build.gradle": "java",
+  "build.gradle.kts": "java",
+};
+
+// ── Template Sections for init ──────────────────────────────────────────────
+
+const TEMPLATE_SECTIONS = {
+  next: {
+    purpose: "Next.js web application",
+    commands: "npm run dev, npm run build, npm run lint, npm test",
+    rules: [
+      "Use App Router conventions",
+      "Server components by default, 'use client' only when needed",
+      "Use TypeScript strict mode",
+    ],
+  },
+  react: {
+    purpose: "React application",
+    commands: "npm start, npm run build, npm run lint, npm test",
+    rules: [
+      "Functional components with hooks",
+      "Co-locate component, test, and styles",
+      "Use TypeScript strict mode",
+    ],
+  },
+  python: {
+    purpose: "Python application",
+    commands: "pytest, ruff check ., ruff format .",
+    rules: [
+      "Type hints on all public functions",
+      "Use dataclasses/pydantic for data models",
+      "Keep modules focused and small",
+    ],
+  },
+  node: {
+    purpose: "Node.js application",
+    commands: "npm start, npm test, npm run lint",
+    rules: [
+      "Use ES modules (import/export)",
+      "Handle errors explicitly, never swallow",
+      "Use async/await over callbacks",
+    ],
+  },
+  go: {
+    purpose: "Go application",
+    commands: "go build ./..., go test ./..., golangci-lint run",
+    rules: [
+      "Handle all errors explicitly",
+      "Use interfaces for testability",
+      "Keep packages focused",
+    ],
+  },
+  expo: {
+    purpose: "Expo/React Native mobile application",
+    commands: "npx expo start, npm test, npm run lint",
+    rules: [
+      "Use Expo SDK APIs over bare React Native",
+      "Test on both iOS and Android",
+      "Use TypeScript strict mode",
+    ],
+  },
+  rust: {
+    purpose: "Rust application",
+    commands: "cargo build, cargo test, cargo clippy",
+    rules: [
+      "Prefer owned types in public APIs",
+      "Use Result for fallible operations",
+      "Document public items",
+    ],
+  },
+  swift: {
+    purpose: "Swift application",
+    commands: "swift build, swift test",
+    rules: [
+      "Use Swift concurrency (async/await)",
+      "Protocol-oriented design",
+      "Prefer value types",
+    ],
+  },
+  generic: {
+    purpose: "Software project",
+    commands: "",
+    rules: [
+      "Follow existing patterns in the codebase",
+      "Test before committing",
+      "Keep functions focused and small",
+    ],
+  },
+};
+
+function generateTemplate(stack, exemplar, pattern) {
+  const t = TEMPLATE_SECTIONS[stack] || TEMPLATE_SECTIONS.generic;
+  const lines = [];
+
+  lines.push(`# ${basename(process.cwd())}`);
+  lines.push("");
+  lines.push(`> ${t.purpose}`);
+  lines.push("");
+
+  if (t.commands) {
+    lines.push("## Commands");
+    lines.push("");
+    for (const cmd of t.commands.split(", ")) {
+      lines.push(`- \`${cmd}\``);
+    }
+    lines.push("");
+  }
+
+  lines.push("## Architecture");
+  lines.push("");
+  lines.push("<!-- Describe key directories, data flow, and patterns -->");
+  lines.push("");
+
+  lines.push("## Rules");
+  lines.push("");
+  for (const rule of t.rules) {
+    lines.push(`- ${rule}`);
+  }
+  lines.push("");
+
+  lines.push("## Quality Gates");
+  lines.push("");
+  lines.push("- [ ] All tests passing");
+  lines.push("- [ ] Linter clean");
+  const tsStacks = new Set(["next", "react", "expo", "node"]);
+  if (tsStacks.has(stack)) {
+    lines.push("- [ ] No TypeScript errors");
+  }
+  lines.push("");
+
+  if (exemplar) {
+    lines.push(
+      `<!-- Based on ${exemplar.name} (health: ${exemplar.healthScore}, pattern: ${pattern}) -->`,
+    );
+  }
+
+  return lines.join("\n");
+}
+
+// ── Init Subcommand ─────────────────────────────────────────────────────────
+
+if (cliArgs.command === "init") {
+  const cwd = process.cwd();
+  const stackInfo = detectTechStack(cwd);
+  const stack = cliArgs.template || stackInfo.stacks[0] || "generic";
+
+  if (cliArgs.template && !TEMPLATE_SECTIONS[cliArgs.template]) {
+    console.error(
+      `Warning: unknown stack '${cliArgs.template}', using generic template. Available: ${Object.keys(TEMPLATE_SECTIONS).join(", ")}`,
+    );
+  }
+
+  // Scan repos to find exemplar
+  let exemplar = null;
+  let pattern = "minimal";
+  if (existsSync(CONF)) {
+    const initRoots = getScanRoots();
+    const initRepoPaths = findGitRepos(initRoots, MAX_DEPTH);
+    const configuredForInit = [];
+    for (const repoDir of initRepoPaths) {
+      const commands = scanMdDir(join(repoDir, ".claude", "commands"));
+      const rules = scanMdDir(join(repoDir, ".claude", "rules"));
+      let agentsFile = null;
+      if (existsSync(join(repoDir, "AGENTS.md"))) agentsFile = join(repoDir, "AGENTS.md");
+      else if (existsSync(join(repoDir, "CLAUDE.md"))) agentsFile = join(repoDir, "CLAUDE.md");
+      if (!agentsFile && commands.length === 0 && rules.length === 0) continue;
+      const sections = agentsFile ? extractSections(agentsFile) : [];
+      const ts = detectTechStack(repoDir);
+      const fc = freshnessClass(getFreshness(repoDir));
+      const health = computeHealthScore({
+        hasAgentsFile: !!agentsFile,
+        desc: agentsFile ? extractProjectDesc(agentsFile) : [],
+        commandCount: commands.length,
+        ruleCount: rules.length,
+        sectionCount: sections.length,
+        freshnessClass: fc,
+      });
+      configuredForInit.push({
+        name: basename(repoDir),
+        commands,
+        rules,
+        sections,
+        techStack: ts.stacks,
+        healthScore: health.score,
+        hasAgentsFile: !!agentsFile,
+      });
+    }
+    exemplar = findExemplar([stack], configuredForInit);
+    if (exemplar) pattern = detectConfigPattern(exemplar);
+  }
+
+  const content = generateTemplate(stack, exemplar, pattern);
+  const claudeMdPath = join(cwd, "CLAUDE.md");
+
+  if (cliArgs.dryRun) {
+    console.log(`Would create: ${claudeMdPath}`);
+    console.log(`Stack: ${stack}`);
+    if (exemplar) console.log(`Exemplar: ${exemplar.name} (${pattern})`);
+    console.log("---");
+    console.log(content);
+    process.exit(0);
+  }
+
+  if (existsSync(claudeMdPath)) {
+    console.error(
+      `Error: ${claudeMdPath} already exists. Remove it first or use --dry-run to preview.`,
+    );
+    process.exit(1);
+  }
+
+  writeFileSync(claudeMdPath, content);
+  console.log(
+    `Created ${claudeMdPath} (stack: ${stack}${exemplar ? `, based on ${exemplar.name}` : ""})`,
+  );
+  process.exit(0);
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -566,22 +825,6 @@ function computeHealthScore(repo) {
 
 // ── Tech Stack Detection ────────────────────────────────────────────────────
 
-const STACK_FILES = {
-  "next.config.js": "next",
-  "next.config.mjs": "next",
-  "next.config.ts": "next",
-  "Cargo.toml": "rust",
-  "go.mod": "go",
-  "requirements.txt": "python",
-  "pyproject.toml": "python",
-  "setup.py": "python",
-  "Package.swift": "swift",
-  Gemfile: "ruby",
-  "pom.xml": "java",
-  "build.gradle": "java",
-  "build.gradle.kts": "java",
-};
-
 function detectTechStack(repoDir) {
   const stacks = new Set();
   let hasPackageJson = false;
@@ -666,6 +909,49 @@ function generateSuggestions(exemplar) {
   if (exemplar.rules?.length > 0)
     suggestions.push(`add rules (${exemplar.name} has ${exemplar.rules.length})`);
   return suggestions;
+}
+
+function detectConfigPattern(repo) {
+  if (repo.rules.length >= 3) return "modular";
+  if (repo.sections.length >= 3) return "monolithic";
+  if (repo.commands.length >= 2 && repo.sections.length === 0) return "command-heavy";
+  return "minimal";
+}
+
+function computeConfigSimilarity(repoA, repoB) {
+  if (!repoA || !repoB) return 0;
+  let matches = 0;
+  let total = 0;
+
+  // Section name overlap (Jaccard similarity)
+  const sectionsA = new Set((repoA.sections || []).map((s) => s.name || s));
+  const sectionsB = new Set((repoB.sections || []).map((s) => s.name || s));
+  if (sectionsA.size > 0 || sectionsB.size > 0) {
+    const intersection = [...sectionsA].filter((s) => sectionsB.has(s)).length;
+    const union = new Set([...sectionsA, ...sectionsB]).size;
+    matches += intersection;
+    total += union;
+  }
+
+  // Stack overlap
+  const stackA = new Set(repoA.techStack || []);
+  const stackB = new Set(repoB.techStack || []);
+  if (stackA.size > 0 || stackB.size > 0) {
+    const intersection = [...stackA].filter((s) => stackB.has(s)).length;
+    const union = new Set([...stackA, ...stackB]).size;
+    matches += intersection;
+    total += union;
+  }
+
+  // Same config pattern bonus
+  if (repoA.configPattern && repoA.configPattern === repoB.configPattern) {
+    matches += 1;
+    total += 1;
+  } else {
+    total += 1;
+  }
+
+  return total > 0 ? Math.round((matches / total) * 100) : 0;
 }
 
 // ── Freshness ───────────────────────────────────────────────────────────────
@@ -771,6 +1057,7 @@ for (const repoDir of allRepoPaths) {
     repo.healthScore = health.score;
     repo.healthReasons = health.reasons;
     repo.hasAgentsFile = !!agentsFile;
+    repo.configPattern = detectConfigPattern(repo);
 
     // Drift detection
     const drift = computeDrift(repoDir, repo.freshness);
@@ -800,6 +1087,48 @@ for (const repo of unconfigured) {
   } else {
     repo.suggestions = [];
     repo.exemplarName = "";
+  }
+}
+
+// Compute similar repos for configured repos
+for (const repo of configured) {
+  const similar = configured
+    .filter((r) => r !== repo)
+    .map((r) => ({ name: r.name, similarity: computeConfigSimilarity(repo, r) }))
+    .filter((r) => r.similarity >= 40)
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, 2);
+  repo.similarRepos = similar;
+}
+
+// Detect consolidation opportunities
+const consolidationGroups = [];
+const byStack = {};
+for (const repo of configured) {
+  for (const s of repo.techStack || []) {
+    if (!byStack[s]) byStack[s] = [];
+    byStack[s].push(repo);
+  }
+}
+for (const [stack, repos] of Object.entries(byStack)) {
+  if (repos.length >= 3) {
+    let pairCount = 0;
+    let simSum = 0;
+    for (let i = 0; i < repos.length; i++) {
+      for (let j = i + 1; j < repos.length; j++) {
+        simSum += computeConfigSimilarity(repos[i], repos[j]);
+        pairCount++;
+      }
+    }
+    const avgSimilarity = pairCount > 0 ? Math.round(simSum / pairCount) : 0;
+    if (avgSimilarity >= 30) {
+      consolidationGroups.push({
+        stack,
+        repos: repos.map((r) => r.name),
+        avgSimilarity,
+        suggestion: `${repos.length} ${stack} repos with ${avgSimilarity}% avg similarity — consider shared global rules`,
+      });
+    }
   }
 }
 
@@ -892,7 +1221,10 @@ if (cliArgs.json) {
         class: r.freshnessClass,
       },
       drift: r.drift || { level: "unknown", commitsSince: 0 },
+      configPattern: r.configPattern || "minimal",
+      similarRepos: r.similarRepos || [],
     })),
+    consolidationGroups,
     unconfiguredRepos: unconfigured.map((r) => ({
       name: r.name,
       path: r.shortPath,
@@ -1308,6 +1640,11 @@ const html = `<!DOCTYPE html>
   .drift-high { color: var(--red); }
   .quick-wins { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: .5rem; }
   .quick-win { font-size: .6rem; padding: .15rem .4rem; border-radius: 3px; background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.2); color: var(--yellow); }
+  .consolidation-hint { padding: .45rem .6rem; background: var(--surface2); border-radius: 6px; margin-top: .4rem; display: flex; align-items: baseline; gap: .5rem; }
+  .consolidation-hint:first-child { margin-top: 0; }
+  .consolidation-stack { font-size: .7rem; font-weight: 600; color: var(--accent); white-space: nowrap; }
+  .consolidation-text { font-size: .7rem; color: var(--text-dim); }
+
   .unconfigured-item .stack-tag { font-size: .5rem; color: var(--accent-dim); margin-left: .3rem; }
 
   .freshness-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; }
@@ -1382,6 +1719,15 @@ ${
     : ""
 }
 </div>
+
+${
+  consolidationGroups.length
+    ? `<div class="card full" style="margin-bottom:1.25rem">
+  <h2>Consolidation Opportunities <span class="n">${consolidationGroups.length}</span></h2>
+  ${consolidationGroups.map((g) => `<div class="consolidation-hint"><span class="consolidation-stack">${esc(g.stack)}</span> <span class="consolidation-text">${esc(g.suggestion)}</span></div>`).join("\n  ")}
+</div>`
+    : ""
+}
 
 <div class="search-bar">
   <input type="text" id="search" placeholder="search repos..." autocomplete="off">
