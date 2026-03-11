@@ -90,22 +90,29 @@ export function detectTechStack(repoDir) {
   return { stacks: [...stacks] };
 }
 
-export function computeDrift(repoDir, configTimestamp) {
-  if (!configTimestamp) return { level: "unknown", commitsSince: 0 };
+export function classifyDrift(commitCount) {
+  if (commitCount === null || commitCount === undefined || commitCount < 0) {
+    return { level: "unknown", commitsSince: 0 };
+  }
+  const n = Math.max(0, Number(commitCount) || 0);
+  if (n === 0) return { level: "synced", commitsSince: 0 };
+  if (n <= 5) return { level: "low", commitsSince: n };
+  if (n <= 20) return { level: "medium", commitsSince: n };
+  return { level: "high", commitsSince: n };
+}
 
-  // Count commits since the config was last updated
+/** Count commits since config was last updated. Returns null if unknown. */
+export function getGitRevCount(repoDir, configTimestamp) {
+  if (!configTimestamp) return null;
   const countStr = gitCmd(repoDir, "rev-list", "--count", `--since=${configTimestamp}`, "HEAD");
-  if (!countStr) return { level: "unknown", commitsSince: 0 };
-
+  if (!countStr) return null;
   const parsed = Number(countStr);
-  if (!Number.isFinite(parsed)) return { level: "unknown", commitsSince: 0 };
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(0, parsed - 1); // -1 to exclude the config commit itself
+}
 
-  const commitsSince = Math.max(0, parsed - 1); // -1 to exclude the config commit itself
-
-  if (commitsSince === 0) return { level: "synced", commitsSince: 0 };
-  if (commitsSince <= 5) return { level: "low", commitsSince };
-  if (commitsSince <= 20) return { level: "medium", commitsSince };
-  return { level: "high", commitsSince };
+export function computeDrift(repoDir, configTimestamp) {
+  return classifyDrift(getGitRevCount(repoDir, configTimestamp));
 }
 
 export function findExemplar(stack, configuredRepos) {

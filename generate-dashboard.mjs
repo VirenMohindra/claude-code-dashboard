@@ -28,39 +28,26 @@ import {
   CONF,
   MAX_DEPTH,
   REPO_URL,
-  SIMILARITY_THRESHOLD,
 } from "./src/constants.mjs";
 import { parseArgs, generateCompletions } from "./src/cli.mjs";
 import { shortPath } from "./src/helpers.mjs";
 import { anonymizeAll } from "./src/anonymize.mjs";
-import { generateDemoData } from "./src/demo.mjs";
+import { generateDemoRawInputs } from "./src/demo.mjs";
 import { findGitRepos, getScanRoots } from "./src/discovery.mjs";
 import { extractProjectDesc, extractSections, scanMdDir } from "./src/markdown.mjs";
 import { scanSkillsDir, groupSkillsByCategory } from "./src/skills.mjs";
 import {
-  computeHealthScore,
   detectTechStack,
-  computeDrift,
-  findExemplar,
-  generateSuggestions,
-  detectConfigPattern,
-  computeConfigSimilarity,
-  matchSkillsToRepo,
+  getGitRevCount,
   lintConfig,
   computeDashboardDiff,
 } from "./src/analysis.mjs";
-import { getFreshness, relativeTime, freshnessClass } from "./src/freshness.mjs";
-import {
-  parseUserMcpConfig,
-  parseProjectMcpConfig,
-  findPromotionCandidates,
-  scanHistoricalMcpServers,
-  classifyHistoricalServers,
-} from "./src/mcp.mjs";
-import { aggregateSessionMeta } from "./src/usage.mjs";
+import { getFreshness } from "./src/freshness.mjs";
+import { parseUserMcpConfig, parseProjectMcpConfig, scanHistoricalMcpServers } from "./src/mcp.mjs";
 import { handleInit } from "./src/templates.mjs";
 import { generateCatalogHtml } from "./src/render.mjs";
 import { generateDashboardHtml } from "./src/assembler.mjs";
+import { buildDashboardData } from "./src/pipeline.mjs";
 import { startWatch } from "./src/watch.mjs";
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
@@ -73,8 +60,9 @@ if (cliArgs.command === "init") handleInit(cliArgs);
 // ── Demo Mode ────────────────────────────────────────────────────────────────
 
 if (cliArgs.demo) {
-  const demoData = generateDemoData();
-  const html = generateDashboardHtml(demoData);
+  const rawInputs = generateDemoRawInputs();
+  const data = buildDashboardData(rawInputs);
+  const html = generateDashboardHtml(data);
 
   const outputPath = cliArgs.output;
   mkdirSync(dirname(outputPath), { recursive: true });
@@ -97,593 +85,250 @@ if (cliArgs.demo) {
   process.exit(0);
 }
 
-// ── Collect Everything ───────────────────────────────────────────────────────
+// ── Collect Raw Inputs ────────────────────────────────────────────────────────
 
-const scanRoots = getScanRoots();
-const allRepoPaths = findGitRepos(scanRoots, MAX_DEPTH);
+function collectRawInputs() {
+  const scanRoots = getScanRoots();
+  const allRepoPaths = findGitRepos(scanRoots, MAX_DEPTH);
 
-const globalCmds = scanMdDir(join(CLAUDE_DIR, "commands"));
-const globalRules = scanMdDir(join(CLAUDE_DIR, "rules"));
-const globalSkills = scanSkillsDir(join(CLAUDE_DIR, "skills"));
+  // Global config
+  const globalCmds = scanMdDir(join(CLAUDE_DIR, "commands"));
+  const globalRules = scanMdDir(join(CLAUDE_DIR, "rules"));
+  const globalSkills = scanSkillsDir(join(CLAUDE_DIR, "skills"));
 
-const configured = [];
-const unconfigured = [];
-const seenNames = new Map();
+  // Repo discovery and scanning
+  const repos = [];
+  for (const repoDir of allRepoPaths) {
+    const name = basename(repoDir);
+    const commands = scanMdDir(join(repoDir, ".claude", "commands"));
+    const rules = scanMdDir(join(repoDir, ".claude", "rules"));
 
-for (const repoDir of allRepoPaths) {
-  const name = basename(repoDir);
+    // AGENTS.md / CLAUDE.md
+    let agentsFile = null;
+    if (existsSync(join(repoDir, "AGENTS.md"))) agentsFile = join(repoDir, "AGENTS.md");
+    else if (existsSync(join(repoDir, "CLAUDE.md"))) agentsFile = join(repoDir, "CLAUDE.md");
 
-  // Collision-safe display key
-  const count = (seenNames.get(name) || 0) + 1;
-  seenNames.set(name, count);
-  const key = count > 1 ? `${name}__${count}` : name;
+    const desc = agentsFile ? extractProjectDesc(agentsFile) : [];
+    const sections = agentsFile ? extractSections(agentsFile) : [];
 
-  const repo = {
-    key,
-    name,
-    path: repoDir,
-    shortPath: shortPath(repoDir),
-    commands: scanMdDir(join(repoDir, ".claude", "commands")),
-    rules: scanMdDir(join(repoDir, ".claude", "rules")),
-    desc: [],
-    sections: [],
-    freshness: 0,
-    freshnessText: "",
-    freshnessClass: "stale",
-  };
+    const stackInfo = detectTechStack(repoDir);
+    const hasConfig = commands.length > 0 || rules.length > 0 || agentsFile;
+    const freshness = hasConfig ? getFreshness(repoDir) : 0;
 
-  // AGENTS.md / CLAUDE.md
-  let agentsFile = null;
-  if (existsSync(join(repoDir, "AGENTS.md"))) agentsFile = join(repoDir, "AGENTS.md");
-  else if (existsSync(join(repoDir, "CLAUDE.md"))) agentsFile = join(repoDir, "CLAUDE.md");
+    // Compute gitRevCount for configured repos (used by pipeline for drift)
+    const gitRevCount = hasConfig ? getGitRevCount(repoDir, freshness) : null;
 
-  if (agentsFile) {
-    repo.desc = extractProjectDesc(agentsFile);
-    repo.sections = extractSections(agentsFile);
-  }
-
-  const hasConfig = repo.commands.length > 0 || repo.rules.length > 0 || agentsFile;
-
-  // Tech stack (for both configured and unconfigured)
-  const stackInfo = detectTechStack(repoDir);
-  repo.techStack = stackInfo.stacks;
-
-  if (hasConfig) {
-    repo.freshness = getFreshness(repoDir);
-    repo.freshnessText = relativeTime(repo.freshness);
-    repo.freshnessClass = freshnessClass(repo.freshness);
-
-    // Health score
-    const health = computeHealthScore({
-      hasAgentsFile: !!agentsFile,
-      desc: repo.desc,
-      commandCount: repo.commands.length,
-      ruleCount: repo.rules.length,
-      sectionCount: repo.sections.length,
-      freshnessClass: repo.freshnessClass,
+    repos.push({
+      name,
+      path: repoDir,
+      shortPath: shortPath(repoDir),
+      commands,
+      rules,
+      agentsFile,
+      desc,
+      sections,
+      techStack: stackInfo.stacks,
+      freshness,
+      gitRevCount,
     });
-    repo.healthScore = health.score;
-    repo.healthReasons = health.reasons;
-    repo.hasAgentsFile = !!agentsFile;
-    repo.configPattern = detectConfigPattern(repo);
-
-    // Drift detection
-    const drift = computeDrift(repoDir, repo.freshness);
-    repo.drift = drift;
-
-    configured.push(repo);
-  } else {
-    unconfigured.push(repo);
   }
-}
 
-// Sort configured by richness (most config first)
-configured.sort((a, b) => {
-  const score = (r) =>
-    r.commands.length * 3 + r.rules.length * 2 + r.sections.length + (r.desc.length > 0 ? 1 : 0);
-  return score(b) - score(a);
-});
-
-unconfigured.sort((a, b) => a.name.localeCompare(b.name));
-
-// Compute suggestions for unconfigured repos
-for (const repo of unconfigured) {
-  const exemplar = findExemplar(repo.techStack, configured);
-  if (exemplar) {
-    repo.suggestions = generateSuggestions(exemplar);
-    repo.exemplarName = exemplar.name;
-  } else {
-    repo.suggestions = [];
-    repo.exemplarName = "";
-  }
-}
-
-// Compute similar repos for configured repos
-for (const repo of configured) {
-  const similar = configured
-    .filter((r) => r !== repo)
-    .map((r) => ({ name: r.name, similarity: computeConfigSimilarity(repo, r) }))
-    .filter((r) => r.similarity >= SIMILARITY_THRESHOLD)
-    .sort((a, b) => b.similarity - a.similarity)
-    .slice(0, 2);
-  repo.similarRepos = similar;
-  repo.matchedSkills = matchSkillsToRepo(repo, globalSkills);
-}
-
-// Detect consolidation opportunities
-const consolidationGroups = [];
-const byStack = {};
-for (const repo of configured) {
-  for (const s of repo.techStack || []) {
-    if (!byStack[s]) byStack[s] = [];
-    byStack[s].push(repo);
-  }
-}
-for (const [stack, repos] of Object.entries(byStack)) {
-  if (repos.length >= 3) {
-    let pairCount = 0;
-    let simSum = 0;
-    for (let i = 0; i < repos.length; i++) {
-      for (let j = i + 1; j < repos.length; j++) {
-        simSum += computeConfigSimilarity(repos[i], repos[j]);
-        pairCount++;
+  // Dependency chains from config
+  const chains = [];
+  if (existsSync(CONF)) {
+    for (const line of readFileSync(CONF, "utf8").split("\n")) {
+      const m = line.match(/^chain:\s*(.+)/i);
+      if (!m) continue;
+      const raw = m[1];
+      if (raw.includes("<-")) {
+        chains.push({ nodes: raw.split(/\s*<-\s*/), arrow: "&larr;" });
+      } else {
+        chains.push({ nodes: raw.split(/\s*->\s*/), arrow: "&rarr;" });
       }
     }
-    const avgSimilarity = pairCount > 0 ? Math.round(simSum / pairCount) : 0;
-    if (avgSimilarity >= 30) {
-      consolidationGroups.push({
-        stack,
-        repos: repos.map((r) => r.name),
-        avgSimilarity,
-        suggestion: `${repos.length} ${stack} repos with ${avgSimilarity}% avg similarity — consider shared global rules`,
-      });
-    }
   }
-}
 
-// Dependency chains from config
-function parseChains() {
-  if (!existsSync(CONF)) return [];
-  const chains = [];
-  for (const line of readFileSync(CONF, "utf8").split("\n")) {
-    const m = line.match(/^chain:\s*(.+)/i);
-    if (!m) continue;
-    const raw = m[1];
-    if (raw.includes("<-")) {
-      chains.push({ nodes: raw.split(/\s*<-\s*/), arrow: "&larr;" });
-    } else {
-      chains.push({ nodes: raw.split(/\s*->\s*/), arrow: "&rarr;" });
-    }
-  }
-  return chains;
-}
-const chains = parseChains();
+  // MCP Server Discovery
+  const claudeJsonPath = join(HOME, ".claude.json");
+  const userMcpServers = [];
 
-// MCP Server Discovery
-const claudeJsonPath = join(HOME, ".claude.json");
-const allMcpServers = [];
-
-const userMcpPath = join(CLAUDE_DIR, "mcp_config.json");
-if (existsSync(userMcpPath)) {
-  try {
-    const content = readFileSync(userMcpPath, "utf8");
-    allMcpServers.push(...parseUserMcpConfig(content));
-  } catch {
-    // skip if unreadable
-  }
-}
-
-// ~/.claude.json is the primary location where `claude mcp add` writes
-let claudeJsonParsed = null;
-if (existsSync(claudeJsonPath)) {
-  try {
-    const content = readFileSync(claudeJsonPath, "utf8");
-    claudeJsonParsed = JSON.parse(content);
-    const existing = new Set(allMcpServers.filter((s) => s.scope === "user").map((s) => s.name));
-    for (const s of parseUserMcpConfig(content)) {
-      if (!existing.has(s.name)) allMcpServers.push(s);
-    }
-  } catch {
-    // skip if unreadable
-  }
-}
-
-for (const repoDir of allRepoPaths) {
-  const mcpPath = join(repoDir, ".mcp.json");
-  if (existsSync(mcpPath)) {
+  const userMcpPath = join(CLAUDE_DIR, "mcp_config.json");
+  if (existsSync(userMcpPath)) {
     try {
-      const content = readFileSync(mcpPath, "utf8");
-      const servers = parseProjectMcpConfig(content, shortPath(repoDir));
-      allMcpServers.push(...servers);
-      const repo =
-        configured.find((r) => r.path === repoDir) || unconfigured.find((r) => r.path === repoDir);
-      if (repo) repo.mcpServers = servers;
+      const content = readFileSync(userMcpPath, "utf8");
+      userMcpServers.push(...parseUserMcpConfig(content));
     } catch {
       // skip if unreadable
     }
   }
-}
 
-// Disabled MCP servers
-const disabledMcpByRepo = {};
-if (claudeJsonParsed) {
-  try {
-    const claudeJson = claudeJsonParsed;
-    for (const [path, entry] of Object.entries(claudeJson)) {
-      if (
-        typeof entry === "object" &&
-        entry !== null &&
-        Array.isArray(entry.disabledMcpServers) &&
-        entry.disabledMcpServers.length > 0
-      ) {
-        disabledMcpByRepo[path] = entry.disabledMcpServers;
+  // ~/.claude.json is the primary location where `claude mcp add` writes
+  let claudeJsonParsed = null;
+  if (existsSync(claudeJsonPath)) {
+    try {
+      const content = readFileSync(claudeJsonPath, "utf8");
+      claudeJsonParsed = JSON.parse(content);
+      const existing = new Set(userMcpServers.filter((s) => s.scope === "user").map((s) => s.name));
+      for (const s of parseUserMcpConfig(content)) {
+        if (!existing.has(s.name)) userMcpServers.push(s);
       }
+    } catch {
+      // skip if unreadable
     }
-  } catch {
-    // skip if parse fails
   }
-}
 
-const mcpPromotions = findPromotionCandidates(allMcpServers);
-
-const disabledByServer = {};
-for (const [, names] of Object.entries(disabledMcpByRepo)) {
-  for (const name of names) {
-    disabledByServer[name] = (disabledByServer[name] || 0) + 1;
-  }
-}
-
-const mcpByName = {};
-for (const s of allMcpServers) {
-  if (!mcpByName[s.name])
-    mcpByName[s.name] = {
-      name: s.name,
-      type: s.type,
-      projects: [],
-      userLevel: false,
-      disabledIn: 0,
-    };
-  if (s.scope === "user") mcpByName[s.name].userLevel = true;
-  if (s.scope === "project") mcpByName[s.name].projects.push(s.source);
-}
-for (const entry of Object.values(mcpByName)) {
-  entry.disabledIn = disabledByServer[entry.name] || 0;
-}
-
-const historicalMcpMap = scanHistoricalMcpServers(CLAUDE_DIR);
-const currentMcpNames = new Set(allMcpServers.map((s) => s.name));
-const { recent: recentMcpServers, former: formerMcpServers } = classifyHistoricalServers(
-  historicalMcpMap,
-  currentMcpNames,
-);
-
-// Normalize all historical project paths
-for (const server of [...recentMcpServers, ...formerMcpServers]) {
-  server.projects = server.projects.map((p) => shortPath(p));
-}
-
-// Merge recently-seen servers into allMcpServers so they show up as current
-for (const server of recentMcpServers) {
-  if (!mcpByName[server.name]) {
-    mcpByName[server.name] = {
-      name: server.name,
-      type: "unknown",
-      projects: server.projects,
-      userLevel: false,
-      disabledIn: disabledByServer[server.name] || 0,
-      recentlyActive: true,
-    };
-  }
-}
-const mcpSummary = Object.values(mcpByName).sort((a, b) => {
-  if (a.userLevel !== b.userLevel) return a.userLevel ? -1 : 1;
-  return a.name.localeCompare(b.name);
-});
-const mcpCount = mcpSummary.length;
-
-// ── Usage Analytics ──────────────────────────────────────────────────────────
-
-const SESSION_META_LIMIT = 1000;
-const sessionMetaDir = join(CLAUDE_DIR, "usage-data", "session-meta");
-const sessionMetaFiles = [];
-if (existsSync(sessionMetaDir)) {
-  try {
-    const files = readdirSync(sessionMetaDir)
-      .filter((f) => f.endsWith(".json"))
-      .sort()
-      .slice(-SESSION_META_LIMIT);
-    for (const f of files) {
+  // Project MCP servers
+  const projectMcpByRepo = {};
+  for (const repoDir of allRepoPaths) {
+    const mcpPath = join(repoDir, ".mcp.json");
+    if (existsSync(mcpPath)) {
       try {
-        const content = readFileSync(join(sessionMetaDir, f), "utf8");
-        sessionMetaFiles.push(JSON.parse(content));
+        const content = readFileSync(mcpPath, "utf8");
+        const servers = parseProjectMcpConfig(content, shortPath(repoDir));
+        projectMcpByRepo[repoDir] = servers;
       } catch {
-        // skip unparseable files
+        // skip if unreadable
       }
     }
-  } catch {
-    // skip if directory unreadable
   }
-}
-const usageAnalytics = aggregateSessionMeta(sessionMetaFiles);
 
-// ccusage integration
-let ccusageData = null;
-const ccusageCachePath = join(CLAUDE_DIR, "ccusage-cache.json");
-const CCUSAGE_TTL_MS = 60 * 60 * 1000;
-
-try {
-  const cached = JSON.parse(readFileSync(ccusageCachePath, "utf8"));
-  if (cached._ts && Date.now() - cached._ts < CCUSAGE_TTL_MS && cached.totals && cached.daily) {
-    ccusageData = cached;
-  }
-} catch {
-  /* no cache or stale */
-}
-
-if (!ccusageData) {
-  try {
-    const raw = execFileSync("npx", ["ccusage", "--json"], {
-      encoding: "utf8",
-      timeout: 30_000,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    const parsed = JSON.parse(raw);
-    if (parsed.totals && parsed.daily) {
-      ccusageData = parsed;
-      try {
-        writeFileSync(ccusageCachePath, JSON.stringify({ ...parsed, _ts: Date.now() }));
-      } catch {
-        /* non-critical */
+  // Disabled MCP servers
+  const disabledMcpByRepo = {};
+  if (claudeJsonParsed) {
+    try {
+      for (const [path, entry] of Object.entries(claudeJsonParsed)) {
+        if (
+          typeof entry === "object" &&
+          entry !== null &&
+          Array.isArray(entry.disabledMcpServers) &&
+          entry.disabledMcpServers.length > 0
+        ) {
+          disabledMcpByRepo[path] = entry.disabledMcpServers;
+        }
       }
+    } catch {
+      // skip if parse fails
+    }
+  }
+
+  // Historical MCP servers — normalize project paths here (I/O side)
+  const historicalMcpMap = scanHistoricalMcpServers(CLAUDE_DIR);
+  for (const [, entry] of historicalMcpMap) {
+    entry.projects = new Set([...entry.projects].map((p) => shortPath(p)));
+  }
+
+  // Usage data — session meta files
+  const SESSION_META_LIMIT = 1000;
+  const sessionMetaDir = join(CLAUDE_DIR, "usage-data", "session-meta");
+  const sessionMetaFiles = [];
+  if (existsSync(sessionMetaDir)) {
+    try {
+      const files = readdirSync(sessionMetaDir)
+        .filter((f) => f.endsWith(".json"))
+        .sort()
+        .slice(-SESSION_META_LIMIT);
+      for (const f of files) {
+        try {
+          const content = readFileSync(join(sessionMetaDir, f), "utf8");
+          sessionMetaFiles.push(JSON.parse(content));
+        } catch {
+          // skip unparseable files
+        }
+      }
+    } catch {
+      // skip if directory unreadable
+    }
+  }
+
+  // ccusage integration
+  let ccusageData = null;
+  const ccusageCachePath = join(CLAUDE_DIR, "ccusage-cache.json");
+  const CCUSAGE_TTL_MS = 60 * 60 * 1000;
+
+  try {
+    const cached = JSON.parse(readFileSync(ccusageCachePath, "utf8"));
+    if (cached._ts && Date.now() - cached._ts < CCUSAGE_TTL_MS && cached.totals && cached.daily) {
+      ccusageData = cached;
     }
   } catch {
-    // ccusage not installed or timed out
+    /* no cache or stale */
   }
-}
 
-// Claude Code Insights report (generated by /insights)
-let insightsReport = null;
-const reportPath = join(CLAUDE_DIR, "usage-data", "report.html");
-if (existsSync(reportPath)) {
-  try {
-    const reportHtml = readFileSync(reportPath, "utf8");
-
-    // Extract subtitle — reformat ISO dates to readable format
-    const subtitleMatch = reportHtml.match(/<p class="subtitle">([^<]+)<\/p>/);
-    let subtitle = subtitleMatch ? subtitleMatch[1] : null;
-    if (subtitle) {
-      subtitle = subtitle.replace(/(\d{4})-(\d{2})-(\d{2})/g, (_, y, m2, d) => {
-        const dt = new Date(`${y}-${m2}-${d}T00:00:00Z`);
-        return dt.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-          timeZone: "UTC",
-        });
+  if (!ccusageData) {
+    try {
+      const raw = execFileSync("npx", ["ccusage", "--json"], {
+        encoding: "utf8",
+        timeout: 30_000,
+        stdio: ["pipe", "pipe", "pipe"],
       });
+      const parsed = JSON.parse(raw);
+      if (parsed.totals && parsed.daily) {
+        ccusageData = parsed;
+        try {
+          writeFileSync(ccusageCachePath, JSON.stringify({ ...parsed, _ts: Date.now() }));
+        } catch {
+          /* non-critical */
+        }
+      }
+    } catch {
+      // ccusage not installed or timed out
     }
+  }
 
-    // Extract glance sections (content may contain <strong> tags)
-    const glanceSections = [];
-    const glanceRe =
-      /<div class="glance-section"><strong>([^<]+)<\/strong>\s*([\s\S]*?)<a[^>]*class="see-more"/g;
-    let m;
-    while ((m = glanceRe.exec(reportHtml)) !== null) {
-      const text = m[2].replace(/<[^>]+>/g, "").trim();
-      glanceSections.push({ label: m[1].replace(/:$/, ""), text });
+  // Claude Code Insights report — read raw HTML, pipeline parses it
+  let insightsReportHtml = null;
+  const reportPath = join(CLAUDE_DIR, "usage-data", "report.html");
+  if (existsSync(reportPath)) {
+    try {
+      insightsReportHtml = readFileSync(reportPath, "utf8");
+    } catch {
+      // skip if unreadable
     }
+  }
 
-    // Extract stats
-    const statsRe = /<div class="stat-value">([^<]+)<\/div><div class="stat-label">([^<]+)<\/div>/g;
-    const reportStats = [];
-    while ((m = statsRe.exec(reportHtml)) !== null) {
-      const value = m[1];
-      const label = m[2];
-      // Mark lines stat for diff-style rendering
-      const isDiff = /^[+-]/.test(value) && value.includes("/");
-      reportStats.push({ value, label, isDiff });
+  // Stats cache
+  const statsCachePath = join(CLAUDE_DIR, "stats-cache.json");
+  let statsCache = {};
+  if (existsSync(statsCachePath)) {
+    try {
+      statsCache = JSON.parse(readFileSync(statsCachePath, "utf8"));
+    } catch {
+      // skip if parse fails
     }
-
-    // Extract friction categories
-    const frictionRe =
-      /<div class="friction-title">([^<]+)<\/div>\s*<div class="friction-desc">([^<]+)<\/div>/g;
-    const frictionPoints = [];
-    while ((m = frictionRe.exec(reportHtml)) !== null) {
-      frictionPoints.push({ title: m[1], desc: m[2] });
-    }
-
-    if (glanceSections.length > 0 || reportStats.length > 0) {
-      insightsReport = {
-        subtitle,
-        glance: glanceSections,
-        stats: reportStats,
-        friction: frictionPoints.slice(0, 3),
-        filePath: reportPath,
-      };
-    }
-  } catch {
-    // skip if unreadable
   }
+
+  // Scan scope
+  const scanScope = existsSync(CONF) ? `config: ${shortPath(CONF)}` : "~/ (depth 5)";
+
+  return {
+    repos,
+    globalCmds,
+    globalRules,
+    globalSkills,
+    userMcpServers,
+    projectMcpByRepo,
+    disabledMcpByRepo,
+    historicalMcpMap,
+    sessionMetaFiles,
+    ccusageData,
+    statsCache,
+    insightsReportHtml,
+    chains,
+    scanScope,
+    insightsReportPath: reportPath,
+  };
 }
 
-// Stats cache
-const statsCachePath = join(CLAUDE_DIR, "stats-cache.json");
-let statsCache = {};
-if (existsSync(statsCachePath)) {
-  try {
-    statsCache = JSON.parse(readFileSync(statsCachePath, "utf8"));
-  } catch {
-    // skip if parse fails
-  }
-}
+// ── Build Dashboard Data ─────────────────────────────────────────────────────
 
-// Supplement dailyActivity with session-meta data
-if (sessionMetaFiles.length > 0) {
-  const existingDates = new Set((statsCache.dailyActivity || []).map((d) => d.date));
-  const sessionDayCounts = {};
-  for (const s of sessionMetaFiles) {
-    const date = (s.start_time || "").slice(0, 10);
-    if (!date || existingDates.has(date)) continue;
-    sessionDayCounts[date] =
-      (sessionDayCounts[date] || 0) +
-      (s.user_message_count || 0) +
-      (s.assistant_message_count || 0);
-  }
-  const supplemental = Object.entries(sessionDayCounts).map(([date, messageCount]) => ({
-    date,
-    messageCount,
-  }));
-  if (supplemental.length > 0) {
-    statsCache.dailyActivity = [...(statsCache.dailyActivity || []), ...supplemental].sort((a, b) =>
-      a.date.localeCompare(b.date),
-    );
-  }
-}
-
-// Supplement dailyActivity with ccusage data (fills gaps like Feb 17-22)
-if (ccusageData && ccusageData.daily) {
-  const existingDates = new Set((statsCache.dailyActivity || []).map((d) => d.date));
-  const ccusageSupplemental = ccusageData.daily
-    .filter((d) => d.date && !existingDates.has(d.date) && d.totalTokens > 0)
-    .map((d) => ({ date: d.date, messageCount: Math.max(1, Math.round(d.totalTokens / 10000)) }));
-  if (ccusageSupplemental.length > 0) {
-    statsCache.dailyActivity = [...(statsCache.dailyActivity || []), ...ccusageSupplemental].sort(
-      (a, b) => a.date.localeCompare(b.date),
-    );
-  }
-}
-
-// ── Computed Stats ───────────────────────────────────────────────────────────
-
-const totalRepos = allRepoPaths.length;
-const configuredCount = configured.length;
-const unconfiguredCount = unconfigured.length;
-const coveragePct = totalRepos > 0 ? Math.round((configuredCount / totalRepos) * 100) : 0;
-const totalRepoCmds = configured.reduce((sum, r) => sum + r.commands.length, 0);
-const avgHealth =
-  configured.length > 0
-    ? Math.round(configured.reduce((sum, r) => sum + (r.healthScore || 0), 0) / configured.length)
-    : 0;
-const driftCount = configured.filter(
-  (r) => r.drift && (r.drift.level === "medium" || r.drift.level === "high"),
-).length;
-
-// ── Insights ──────────────────────────────────────────────────────────────────
-const insights = [];
-
-// Drift alerts
-const highDriftRepos = configured.filter((r) => r.drift?.level === "high");
-if (highDriftRepos.length > 0) {
-  insights.push({
-    type: "warning",
-    title: `${highDriftRepos.length} repo${highDriftRepos.length > 1 ? "s have" : " has"} high config drift`,
-    detail: highDriftRepos
-      .map((r) => `${r.name} (${r.drift.commitsSince} commits since config update)`)
-      .join(", "),
-    action: "Review and update CLAUDE.md in these repos",
-  });
-}
-
-// Coverage
-if (unconfigured.length > 0 && totalRepos > 0) {
-  const pct = Math.round((unconfigured.length / totalRepos) * 100);
-  if (pct >= 40) {
-    const withStack = unconfigured.filter((r) => r.techStack?.length > 0).slice(0, 3);
-    insights.push({
-      type: "info",
-      title: `${unconfigured.length} repos unconfigured (${pct}%)`,
-      detail: withStack.length
-        ? `Top candidates: ${withStack.map((r) => `${r.name} (${r.techStack.join(", ")})`).join(", ")}`
-        : "",
-      action: "Run claude-code-dashboard init --template <stack> in these repos",
-    });
-  }
-}
-
-// MCP promotions
-if (mcpPromotions.length > 0) {
-  insights.push({
-    type: "promote",
-    title: `${mcpPromotions.length} MCP server${mcpPromotions.length > 1 ? "s" : ""} could be promoted to global`,
-    detail: mcpPromotions.map((p) => `${p.name} (in ${p.projects.length} projects)`).join(", "),
-    action: "Add to ~/.claude/mcp_config.json for all projects",
-  });
-}
-
-// Redundant project-scope MCP configs (global server also in project .mcp.json)
-const redundantMcp = Object.values(mcpByName).filter((s) => s.userLevel && s.projects.length > 0);
-if (redundantMcp.length > 0) {
-  insights.push({
-    type: "tip",
-    title: `${redundantMcp.length} MCP server${redundantMcp.length > 1 ? "s are" : " is"} global but also in project .mcp.json`,
-    detail: redundantMcp.map((s) => `${s.name} (${s.projects.join(", ")})`).join("; "),
-    action: "Remove from project .mcp.json — global config already covers all projects",
-  });
-}
-
-// Skill sharing opportunities
-const skillMatchCounts = {};
-for (const r of configured) {
-  for (const sk of r.matchedSkills || []) {
-    const skName = typeof sk === "string" ? sk : sk.name;
-    if (!skillMatchCounts[skName]) skillMatchCounts[skName] = [];
-    skillMatchCounts[skName].push(r.name);
-  }
-}
-const widelyRelevant = Object.entries(skillMatchCounts)
-  .filter(([, repos]) => repos.length >= 3)
-  .sort((a, b) => b[1].length - a[1].length);
-if (widelyRelevant.length > 0) {
-  const top = widelyRelevant.slice(0, 3);
-  insights.push({
-    type: "info",
-    title: `${widelyRelevant.length} skill${widelyRelevant.length > 1 ? "s" : ""} relevant across 3+ repos`,
-    detail: top.map(([name, repos]) => `${name} (${repos.length} repos)`).join(", "),
-    action: "Consider adding these skills to your global config",
-  });
-}
-
-// Health quick wins — repos closest to next tier
-const quickWinRepos = configured
-  .filter((r) => r.healthScore > 0 && r.healthScore < 80 && r.healthReasons?.length > 0)
-  .sort((a, b) => b.healthScore - a.healthScore)
-  .slice(0, 3);
-if (quickWinRepos.length > 0) {
-  insights.push({
-    type: "tip",
-    title: "Quick wins to improve config health",
-    detail: quickWinRepos
-      .map((r) => `${r.name} (${r.healthScore}/100): ${r.healthReasons[0]}`)
-      .join("; "),
-    action: "Small changes for measurable improvement",
-  });
-}
-
-// Insights report nudge
-if (!insightsReport) {
-  insights.push({
-    type: "info",
-    title: "Generate your Claude Code Insights report",
-    detail: "Get personalized usage patterns, friction points, and feature suggestions",
-    action: "Run /insights in Claude Code",
-  });
-}
-
-const now = new Date();
-const timestamp =
-  now
-    .toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-    .toLowerCase() +
-  " at " +
-  now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).toLowerCase();
-
-const scanScope = existsSync(CONF) ? `config: ${shortPath(CONF)}` : "~/ (depth 5)";
+const rawInputs = collectRawInputs();
+const data = buildDashboardData(rawInputs);
 
 // ── Lint Subcommand ──────────────────────────────────────────────────────────
 
 if (cliArgs.command === "lint") {
   let totalIssues = 0;
-  for (const repo of configured) {
+  for (const repo of data.configured) {
     const issues = lintConfig(repo);
     if (issues.length === 0) continue;
     if (!cliArgs.quiet) console.log(`\n${repo.name} (${repo.shortPath}):`);
@@ -705,7 +350,10 @@ if (cliArgs.command === "lint") {
 const SNAPSHOT_PATH = join(CLAUDE_DIR, "dashboard-snapshot.json");
 if (cliArgs.diff) {
   const currentSnapshot = {
-    configuredRepos: configured.map((r) => ({ name: r.name, healthScore: r.healthScore || 0 })),
+    configuredRepos: data.configured.map((r) => ({
+      name: r.name,
+      healthScore: r.healthScore || 0,
+    })),
   };
   if (existsSync(SNAPSHOT_PATH)) {
     try {
@@ -732,59 +380,60 @@ if (cliArgs.diff) {
 
 if (cliArgs.anonymize) {
   anonymizeAll({
-    configured,
-    unconfigured,
-    globalCmds,
-    globalRules,
-    globalSkills,
-    chains,
-    mcpSummary,
-    mcpPromotions,
-    formerMcpServers,
-    consolidationGroups,
+    configured: data.configured,
+    unconfigured: data.unconfigured,
+    globalCmds: data.globalCmds,
+    globalRules: data.globalRules,
+    globalSkills: data.globalSkills,
+    chains: data.chains,
+    mcpSummary: data.mcpSummary,
+    mcpPromotions: data.mcpPromotions,
+    formerMcpServers: data.formerMcpServers,
+    consolidationGroups: data.consolidationGroups,
   });
 }
 
 // ── JSON Output ──────────────────────────────────────────────────────────────
 
 if (cliArgs.json) {
+  const now = new Date();
   const jsonData = {
     version: VERSION,
     generatedAt: now.toISOString(),
-    scanScope,
+    scanScope: data.scanScope,
     stats: {
-      totalRepos,
-      configuredRepos: configuredCount,
-      unconfiguredRepos: unconfiguredCount,
-      coveragePct,
-      globalCommands: globalCmds.length,
-      globalRules: globalRules.length,
-      skills: globalSkills.length,
-      repoCommands: totalRepoCmds,
-      avgHealthScore: avgHealth,
-      driftingRepos: driftCount,
-      mcpServers: mcpCount,
-      ...(ccusageData
+      totalRepos: data.totalRepos,
+      configuredRepos: data.configuredCount,
+      unconfiguredRepos: data.unconfiguredCount,
+      coveragePct: data.coveragePct,
+      globalCommands: data.globalCmds.length,
+      globalRules: data.globalRules.length,
+      skills: data.globalSkills.length,
+      repoCommands: data.totalRepoCmds,
+      avgHealthScore: data.avgHealth,
+      driftingRepos: data.driftCount,
+      mcpServers: data.mcpCount,
+      ...(data.ccusageData
         ? {
-            totalCost: ccusageData.totals.totalCost,
-            totalTokens: ccusageData.totals.totalTokens,
+            totalCost: data.ccusageData.totals.totalCost,
+            totalTokens: data.ccusageData.totals.totalTokens,
           }
         : {}),
-      errorCategories: usageAnalytics.errorCategories,
+      errorCategories: data.usageAnalytics.errorCategories,
     },
-    globalCommands: globalCmds.map((c) => ({ name: c.name, description: c.desc })),
-    globalRules: globalRules.map((r) => ({ name: r.name, description: r.desc })),
-    skills: globalSkills.map((s) => ({
+    globalCommands: data.globalCmds.map((c) => ({ name: c.name, description: c.desc })),
+    globalRules: data.globalRules.map((r) => ({ name: r.name, description: r.desc })),
+    skills: data.globalSkills.map((s) => ({
       name: s.name,
       description: s.desc,
       source: s.source,
       category: s.category,
     })),
-    chains: chains.map((c) => ({
+    chains: data.chains.map((c) => ({
       nodes: c.nodes.map((n) => n.trim()),
       direction: c.arrow === "&rarr;" ? "forward" : "backward",
     })),
-    configuredRepos: configured.map((r) => ({
+    configuredRepos: data.configured.map((r) => ({
       name: r.name,
       path: r.shortPath,
       commands: r.commands.map((c) => ({ name: c.name, description: c.desc })),
@@ -805,8 +454,8 @@ if (cliArgs.json) {
       similarRepos: r.similarRepos || [],
       mcpServers: r.mcpServers || [],
     })),
-    consolidationGroups,
-    unconfiguredRepos: unconfigured.map((r) => ({
+    consolidationGroups: data.consolidationGroups,
+    unconfiguredRepos: data.unconfigured.map((r) => ({
       name: r.name,
       path: r.shortPath,
       techStack: r.techStack || [],
@@ -814,9 +463,9 @@ if (cliArgs.json) {
       exemplar: r.exemplarName || "",
       mcpServers: r.mcpServers || [],
     })),
-    mcpServers: mcpSummary,
-    mcpPromotions,
-    formerMcpServers,
+    mcpServers: data.mcpSummary,
+    mcpPromotions: data.mcpPromotions,
+    formerMcpServers: data.formerMcpServers,
   };
 
   const jsonOutput = JSON.stringify(jsonData, null, 2);
@@ -834,8 +483,8 @@ if (cliArgs.json) {
 // ── Catalog Output ───────────────────────────────────────────────────────────
 
 if (cliArgs.catalog) {
-  const groups = groupSkillsByCategory(globalSkills);
-  const catalogHtml = generateCatalogHtml(groups, globalSkills.length, timestamp);
+  const groups = groupSkillsByCategory(data.globalSkills);
+  const catalogHtml = generateCatalogHtml(groups, data.globalSkills.length, data.timestamp);
   const outputPath =
     cliArgs.output !== DEFAULT_OUTPUT ? cliArgs.output : join(CLAUDE_DIR, "skill-catalog.html");
   mkdirSync(dirname(outputPath), { recursive: true });
@@ -851,33 +500,7 @@ if (cliArgs.catalog) {
 
 // ── Generate HTML Dashboard ──────────────────────────────────────────────────
 
-const html = generateDashboardHtml({
-  configured,
-  unconfigured,
-  globalCmds,
-  globalRules,
-  globalSkills,
-  chains,
-  mcpSummary,
-  mcpPromotions,
-  formerMcpServers,
-  consolidationGroups,
-  usageAnalytics,
-  ccusageData,
-  statsCache,
-  timestamp,
-  coveragePct,
-  totalRepos,
-  configuredCount,
-  unconfiguredCount,
-  totalRepoCmds,
-  avgHealth,
-  driftCount,
-  mcpCount,
-  scanScope,
-  insights,
-  insightsReport,
-});
+const html = generateDashboardHtml(data);
 
 // ── Write HTML Output ────────────────────────────────────────────────────────
 
@@ -889,10 +512,10 @@ if (!cliArgs.quiet) {
   const sp = shortPath(outputPath);
   console.log(`\n  claude-code-dashboard v${VERSION}\n`);
   console.log(
-    `  ${configuredCount} configured · ${unconfiguredCount} unconfigured · ${totalRepos} repos`,
+    `  ${data.configuredCount} configured · ${data.unconfiguredCount} unconfigured · ${data.totalRepos} repos`,
   );
   console.log(
-    `  ${globalCmds.length} global commands · ${globalSkills.length} skills · ${mcpCount} MCP servers`,
+    `  ${data.globalCmds.length} global commands · ${data.globalSkills.length} skills · ${data.mcpCount} MCP servers`,
   );
   console.log(`\n  ✓ ${sp}`);
   if (cliArgs.open) console.log(`  ✓ opening in browser`);
@@ -909,5 +532,5 @@ if (cliArgs.open) {
 // ── Watch Mode ───────────────────────────────────────────────────────────────
 
 if (cliArgs.watch) {
-  startWatch(outputPath, scanRoots, cliArgs);
+  startWatch(outputPath, getScanRoots(), cliArgs);
 }

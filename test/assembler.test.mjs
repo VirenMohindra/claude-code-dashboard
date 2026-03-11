@@ -1,10 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { generateDashboardHtml } from "../src/assembler.mjs";
-import { generateDemoData } from "../src/demo.mjs";
+import { generateDemoRawInputs } from "../src/demo.mjs";
+import { buildDashboardData } from "../src/pipeline.mjs";
 
 describe("generateDashboardHtml (assembler)", () => {
-  const data = generateDemoData();
+  const data = buildDashboardData(generateDemoRawInputs());
 
   it("produces valid HTML document", () => {
     const html = generateDashboardHtml(data);

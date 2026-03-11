@@ -1,15 +1,16 @@
 /**
- * Generate realistic fake data for --demo flag.
- * Produces a complete data object ready for generateDashboardHtml().
+ * Generate realistic raw inputs for --demo flag.
+ * Returns the same shape that collectRawInputs() returns in production,
+ * so the caller can pass it through buildDashboardData() for pipeline parity.
  */
 
 function daysAgo(n) {
   return Math.floor(Date.now() / 1000) - n * 86400;
 }
 
-const DEMO_CONFIGURED = [
+const DEMO_REPOS = [
+  // ── Configured repos ────────────────────────────────────────────────────
   {
-    key: "acme-web",
     name: "acme-web",
     path: "~/work/acme-web",
     shortPath: "~/work/acme-web",
@@ -28,6 +29,7 @@ const DEMO_CONFIGURED = [
       },
       { name: "styling", desc: "Tailwind utility-first, no inline styles", filepath: "" },
     ],
+    agentsFile: "~/work/acme-web/CLAUDE.md",
     desc: [
       "Customer-facing web application built with Next.js 15 and React Server Components.",
       "Uses Supabase for auth and database, deployed on Vercel.",
@@ -51,22 +53,10 @@ const DEMO_CONFIGURED = [
       },
     ],
     freshness: daysAgo(3),
-    freshnessText: "3 days ago",
-    freshnessClass: "fresh",
+    gitRevCount: 0,
     techStack: ["next", "react"],
-    healthScore: 95,
-    healthReasons: ["Has CLAUDE.md", "Has commands", "Has rules", "Recently updated"],
-    hasAgentsFile: true,
-    configPattern: "modular",
-    drift: { level: "synced", commitsSince: 0 },
-    similarRepos: [{ name: "marketing-site", similarity: 72 }],
-    matchedSkills: [{ name: "e2e-test" }, { name: "react-doctor" }],
-    mcpServers: [
-      { name: "playwright", type: "stdio", scope: "project", source: "~/work/acme-web" },
-    ],
   },
   {
-    key: "payments-api",
     name: "payments-api",
     path: "~/work/payments-api",
     shortPath: "~/work/payments-api",
@@ -83,6 +73,7 @@ const DEMO_CONFIGURED = [
         filepath: "",
       },
     ],
+    agentsFile: "~/work/payments-api/CLAUDE.md",
     desc: ["Payment processing API handling Stripe integration and subscription management."],
     sections: [
       {
@@ -95,20 +86,10 @@ const DEMO_CONFIGURED = [
       },
     ],
     freshness: daysAgo(12),
-    freshnessText: "12 days ago",
-    freshnessClass: "fresh",
+    gitRevCount: 4,
     techStack: ["python"],
-    healthScore: 80,
-    healthReasons: ["Has CLAUDE.md", "Has commands", "Has rules"],
-    hasAgentsFile: true,
-    configPattern: "modular",
-    drift: { level: "low", commitsSince: 4 },
-    similarRepos: [],
-    matchedSkills: [{ name: "systematic-debugging" }],
-    mcpServers: [],
   },
   {
-    key: "mobile-app",
     name: "mobile-app",
     path: "~/work/mobile-app",
     shortPath: "~/work/mobile-app",
@@ -120,6 +101,7 @@ const DEMO_CONFIGURED = [
     rules: [
       { name: "navigation", desc: "React Navigation v7 patterns and deep linking", filepath: "" },
     ],
+    agentsFile: "~/work/mobile-app/CLAUDE.md",
     desc: ["Cross-platform mobile app built with Expo and React Native."],
     sections: [
       {
@@ -128,20 +110,10 @@ const DEMO_CONFIGURED = [
       },
     ],
     freshness: daysAgo(45),
-    freshnessText: "1 month ago",
-    freshnessClass: "aging",
+    gitRevCount: 18,
     techStack: ["expo", "react"],
-    healthScore: 60,
-    healthReasons: ["Has CLAUDE.md", "Has commands"],
-    hasAgentsFile: true,
-    configPattern: "monolithic",
-    drift: { level: "medium", commitsSince: 18 },
-    similarRepos: [{ name: "acme-web", similarity: 45 }],
-    matchedSkills: [{ name: "react-doctor" }],
-    mcpServers: [],
   },
   {
-    key: "infra-tools",
     name: "infra-tools",
     path: "~/work/infra-tools",
     shortPath: "~/work/infra-tools",
@@ -150,23 +122,14 @@ const DEMO_CONFIGURED = [
       { name: "test", desc: "Run go test ./...", filepath: "" },
     ],
     rules: [],
+    agentsFile: "~/work/infra-tools/CLAUDE.md",
     desc: ["Internal CLI tools for infrastructure automation."],
     sections: [{ name: "Build", preview: ["Go 1.22", "Multi-binary workspace layout"] }],
     freshness: daysAgo(90),
-    freshnessText: "3 months ago",
-    freshnessClass: "stale",
+    gitRevCount: 34,
     techStack: ["go"],
-    healthScore: 40,
-    healthReasons: ["Has CLAUDE.md", "Has commands"],
-    hasAgentsFile: true,
-    configPattern: "minimal",
-    drift: { level: "high", commitsSince: 34 },
-    similarRepos: [],
-    matchedSkills: [],
-    mcpServers: [],
   },
   {
-    key: "marketing-site",
     name: "marketing-site",
     path: "~/work/marketing-site",
     shortPath: "~/work/marketing-site",
@@ -177,25 +140,16 @@ const DEMO_CONFIGURED = [
     rules: [
       { name: "content", desc: "All copy comes from CMS, never hardcode text", filepath: "" },
     ],
+    agentsFile: "~/work/marketing-site/CLAUDE.md",
     desc: ["Public marketing website with blog and documentation."],
     sections: [
       { name: "Content", preview: ["MDX for blog posts", "Contentlayer for type-safe content"] },
     ],
     freshness: daysAgo(7),
-    freshnessText: "1 week ago",
-    freshnessClass: "fresh",
+    gitRevCount: 2,
     techStack: ["next"],
-    healthScore: 70,
-    healthReasons: ["Has CLAUDE.md", "Has commands", "Has rules"],
-    hasAgentsFile: true,
-    configPattern: "modular",
-    drift: { level: "low", commitsSince: 2 },
-    similarRepos: [{ name: "acme-web", similarity: 68 }],
-    matchedSkills: [{ name: "e2e-test" }],
-    mcpServers: [],
   },
   {
-    key: "shared-ui",
     name: "shared-ui",
     path: "~/work/shared-ui",
     shortPath: "~/work/shared-ui",
@@ -206,6 +160,7 @@ const DEMO_CONFIGURED = [
     rules: [
       { name: "components", desc: "All components must have stories and a11y tests", filepath: "" },
     ],
+    agentsFile: "~/work/shared-ui/CLAUDE.md",
     desc: ["Shared component library used across web projects."],
     sections: [
       {
@@ -214,50 +169,49 @@ const DEMO_CONFIGURED = [
       },
     ],
     freshness: daysAgo(14),
-    freshnessText: "2 weeks ago",
-    freshnessClass: "fresh",
+    gitRevCount: 0,
     techStack: ["react"],
-    healthScore: 75,
-    healthReasons: ["Has CLAUDE.md", "Has commands", "Has rules"],
-    hasAgentsFile: true,
-    configPattern: "modular",
-    drift: { level: "synced", commitsSince: 0 },
-    similarRepos: [{ name: "acme-web", similarity: 55 }],
-    matchedSkills: [],
-    mcpServers: [],
   },
-];
 
-const DEMO_UNCONFIGURED = [
+  // ── Unconfigured repos ──────────────────────────────────────────────────
   {
-    key: "data-scripts",
     name: "data-scripts",
     path: "~/work/data-scripts",
     shortPath: "~/work/data-scripts",
     techStack: ["python"],
-    suggestions: ["Add CLAUDE.md with project overview", "Add commands for common tasks"],
-    exemplarName: "payments-api",
-    mcpServers: [],
+    agentsFile: null,
+    commands: [],
+    rules: [],
+    desc: [],
+    sections: [],
+    freshness: 0,
+    gitRevCount: null,
   },
   {
-    key: "legacy-admin",
     name: "legacy-admin",
     path: "~/work/legacy-admin",
     shortPath: "~/work/legacy-admin",
     techStack: ["react"],
-    suggestions: ["Add CLAUDE.md", "Add architecture rules"],
-    exemplarName: "acme-web",
-    mcpServers: [],
+    agentsFile: null,
+    commands: [],
+    rules: [],
+    desc: [],
+    sections: [],
+    freshness: 0,
+    gitRevCount: null,
   },
   {
-    key: "ops-runbooks",
     name: "ops-runbooks",
     path: "~/work/ops-runbooks",
     shortPath: "~/work/ops-runbooks",
     techStack: [],
-    suggestions: [],
-    exemplarName: "",
-    mcpServers: [],
+    agentsFile: null,
+    commands: [],
+    rules: [],
+    desc: [],
+    sections: [],
+    freshness: 0,
+    gitRevCount: null,
   },
 ];
 
@@ -341,126 +295,185 @@ const DEMO_GLOBAL_SKILLS = [
   },
 ];
 
+// Simple seeded PRNG for deterministic demo output (mulberry32)
+function seededRng(seed) {
+  let s = seed | 0;
+  return () => {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 function generateDemoHeatmap() {
+  const rng = seededRng(42);
   const days = [];
   const now = new Date();
   for (let i = 364; i >= 0; i--) {
     const d = new Date(now);
     d.setDate(d.getDate() - i);
     const date = d.toISOString().slice(0, 10);
-    // Weighted random: more activity on weekdays
+    // Weighted deterministic: more activity on weekdays
     const isWeekday = d.getDay() > 0 && d.getDay() < 6;
     const base = isWeekday ? 8 : 2;
-    const messageCount = Math.floor(Math.random() * base * 3);
+    const messageCount = Math.floor(rng() * base * 3);
     if (messageCount > 0) days.push({ date, messageCount });
   }
   return days;
 }
 
 function generateDemoHourCounts() {
+  const rng = seededRng(99);
   const counts = {};
   // Peak at 10am and 2pm
   for (let h = 0; h < 24; h++) {
     const peak = Math.exp(-((h - 10) ** 2) / 18) + Math.exp(-((h - 14) ** 2) / 12);
-    counts[String(h)] = Math.round(peak * 120 + Math.random() * 20);
+    counts[String(h)] = Math.round(peak * 120 + rng() * 20);
   }
   return counts;
 }
 
-export function generateDemoData() {
-  const now = new Date();
-  const timestamp =
-    now
-      .toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-      .toLowerCase() +
-    " at " +
-    now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).toLowerCase();
+// ── MCP raw data ─────────────────────────────────────────────────────────────
 
-  const configured = DEMO_CONFIGURED;
-  const unconfigured = DEMO_UNCONFIGURED;
-  const totalRepos = configured.length + unconfigured.length;
+function buildDemoMcpData() {
+  // User-level MCP servers (global)
+  const userMcpServers = [
+    { name: "playwright", type: "stdio", scope: "user", source: "~/.claude/mcp_config.json" },
+    { name: "sentry", type: "http", scope: "user", source: "~/.claude/mcp_config.json" },
+  ];
+
+  // Project-level MCP servers
+  const projectMcpByRepo = {
+    "~/work/acme-web": [
+      { name: "playwright", type: "stdio", scope: "project", source: "~/work/acme-web" },
+      { name: "github", type: "stdio", scope: "project", source: "~/work/acme-web" },
+      { name: "figma", type: "stdio", scope: "project", source: "~/work/acme-web" },
+    ],
+    "~/work/payments-api": [
+      { name: "github", type: "stdio", scope: "project", source: "~/work/payments-api" },
+      { name: "postgres", type: "stdio", scope: "project", source: "~/work/payments-api" },
+    ],
+  };
+
+  // Disabled MCP servers
+  const disabledMcpByRepo = {};
+
+  // Historical MCP servers (former — no longer in any config)
+  const historicalMcpMap = new Map([
+    [
+      "redis",
+      {
+        name: "redis",
+        projects: new Set(["~/work/cache-service"]),
+        lastSeen: null,
+      },
+    ],
+    [
+      "datadog",
+      {
+        name: "datadog",
+        projects: new Set(),
+        lastSeen: null,
+      },
+    ],
+  ]);
+
+  return { userMcpServers, projectMcpByRepo, disabledMcpByRepo, historicalMcpMap };
+}
+
+// ── Session meta raw data ────────────────────────────────────────────────────
+
+function buildDemoSessionMeta() {
+  // Generate enough session entries that aggregateSessionMeta produces
+  // realistic analytics similar to the old hardcoded usageAnalytics.
+  const sessions = [];
+  const toolSets = [
+    { Read: 12, Edit: 8, Bash: 6, Grep: 4, Write: 3, Glob: 2 },
+    { Read: 8, Edit: 6, Bash: 4, Grep: 3, Write: 2, Agent: 1 },
+    { Read: 6, Edit: 5, Bash: 3, Grep: 2, Write: 1, WebSearch: 1 },
+    { Read: 10, Edit: 7, Bash: 5, Grep: 3, Glob: 2, Agent: 1 },
+    { Read: 5, Edit: 4, Bash: 3, Grep: 2, Write: 2 },
+  ];
+  const langSets = [
+    { TypeScript: 25, JavaScript: 8, Markdown: 2 },
+    { Python: 15, Markdown: 1 },
+    { TypeScript: 18, JavaScript: 6 },
+    { Go: 8 },
+    { TypeScript: 12, Python: 5, JavaScript: 3 },
+  ];
+  const errorSets = [
+    { lint_error: 1 },
+    { type_error: 1 },
+    { test_failure: 1 },
+    {},
+    { lint_error: 1, type_error: 1 },
+  ];
+
+  const rng = seededRng(247);
+  for (let i = 0; i < 247; i++) {
+    const dayOffset = Math.floor(rng() * 60);
+    const date = new Date();
+    date.setDate(date.getDate() - dayOffset);
+    const hour = 8 + Math.floor(rng() * 10);
+    date.setHours(hour, Math.floor(rng() * 60), 0, 0);
+
+    const variant = i % toolSets.length;
+    const userMsgs = 3 + Math.floor(rng() * 15);
+    const assistantMsgs = userMsgs + Math.floor(rng() * 5);
+    const duration = 5 + Math.floor(rng() * 40);
+
+    sessions.push({
+      start_time: date.toISOString(),
+      duration_minutes: duration,
+      user_message_count: userMsgs,
+      assistant_message_count: assistantMsgs,
+      tool_counts: { ...toolSets[variant] },
+      languages: { ...langSets[variant] },
+      tool_error_categories: { ...errorSets[variant] },
+    });
+  }
+
+  return sessions;
+}
+
+// ── Insights report HTML ─────────────────────────────────────────────────────
+
+const DEMO_INSIGHTS_HTML = `<!DOCTYPE html>
+<html>
+<body>
+<p class="subtitle">1,386 messages across 117 sessions (365 total) | 2026-02-23 to 2026-03-10</p>
+<div class="stat-value">1,386</div><div class="stat-label">Messages</div>
+<div class="stat-value">+33,424/-2,563</div><div class="stat-label">Lines</div>
+<div class="stat-value">632</div><div class="stat-label">Files</div>
+<div class="stat-value">14</div><div class="stat-label">Days</div>
+<div class="stat-value">99</div><div class="stat-label">Msgs/Day</div>
+<div class="glance-section"><strong>What's working:</strong> Full end-to-end shipping workflow — implementation through PR creation to production deployment in single sessions.<a class="see-more" href="#">more</a></div>
+<div class="glance-section"><strong>What's hindering you:</strong> Claude frequently jumps into fixes without checking actual state first, costing correction cycles.<a class="see-more" href="#">more</a></div>
+<div class="glance-section"><strong>Quick wins to try:</strong> Create custom slash commands for repeated workflows like PR reviews and Slack message drafting.<a class="see-more" href="#">more</a></div>
+<div class="friction-title">Wrong Target / Misidentification</div>
+<div class="friction-desc">Claude acts on the wrong file or setting before you catch the mistake.</div>
+<div class="friction-title">Premature Solutions</div>
+<div class="friction-desc">Jumps into fixes without first checking actual state of the codebase.</div>
+</body>
+</html>`;
+
+// ── Main export ──────────────────────────────────────────────────────────────
+
+export function generateDemoRawInputs() {
+  const { userMcpServers, projectMcpByRepo, disabledMcpByRepo, historicalMcpMap } =
+    buildDemoMcpData();
 
   return {
-    configured,
-    unconfigured,
+    repos: [...DEMO_REPOS],
     globalCmds: DEMO_GLOBAL_CMDS,
     globalRules: DEMO_GLOBAL_RULES,
     globalSkills: DEMO_GLOBAL_SKILLS,
-    chains: [
-      { nodes: ["shared-ui", "acme-web", "marketing-site"], arrow: "&rarr;" },
-      { nodes: ["payments-api", "acme-web"], arrow: "&rarr;" },
-    ],
-    mcpSummary: [
-      { name: "playwright", type: "stdio", projects: [], userLevel: true, disabledIn: 0 },
-      {
-        name: "github",
-        type: "stdio",
-        projects: ["~/work/acme-web", "~/work/payments-api"],
-        userLevel: false,
-        disabledIn: 0,
-      },
-      {
-        name: "postgres",
-        type: "stdio",
-        projects: ["~/work/payments-api"],
-        userLevel: false,
-        disabledIn: 0,
-      },
-      { name: "sentry", type: "http", projects: [], userLevel: true, disabledIn: 0 },
-      {
-        name: "figma",
-        type: "stdio",
-        projects: ["~/work/acme-web"],
-        userLevel: false,
-        disabledIn: 0,
-        recentlyActive: true,
-      },
-    ],
-    mcpPromotions: [{ name: "github", projects: ["~/work/acme-web", "~/work/payments-api"] }],
-    formerMcpServers: [
-      { name: "redis", projects: ["~/work/cache-service"], lastSeen: null },
-      { name: "datadog", projects: [], lastSeen: null },
-    ],
-    consolidationGroups: [
-      {
-        stack: "next",
-        repos: ["acme-web", "marketing-site"],
-        avgSimilarity: 68,
-        suggestion: "2 next repos with 68% avg similarity — consider shared global rules",
-      },
-      {
-        stack: "react",
-        repos: ["acme-web", "shared-ui", "mobile-app"],
-        avgSimilarity: 45,
-        suggestion: "3 react repos with 45% avg similarity — consider shared global rules",
-      },
-    ],
-    usageAnalytics: {
-      totalSessions: 247,
-      topTools: [
-        { name: "Read", count: 1842 },
-        { name: "Edit", count: 1356 },
-        { name: "Bash", count: 987 },
-        { name: "Grep", count: 654 },
-        { name: "Write", count: 432 },
-        { name: "Glob", count: 321 },
-        { name: "Agent", count: 198 },
-        { name: "WebSearch", count: 87 },
-      ],
-      topLanguages: [
-        { name: "TypeScript", count: 4521 },
-        { name: "Python", count: 2103 },
-        { name: "JavaScript", count: 1456 },
-        { name: "Go", count: 432 },
-        { name: "Markdown", count: 321 },
-      ],
-      errorCategories: [
-        { name: "lint_error", count: 45 },
-        { name: "type_error", count: 32 },
-        { name: "test_failure", count: 28 },
-      ],
-      heavySessions: 12,
-    },
+    userMcpServers,
+    projectMcpByRepo,
+    disabledMcpByRepo,
+    historicalMcpMap,
+    sessionMetaFiles: buildDemoSessionMeta(),
     ccusageData: {
       totals: { totalCost: 47.82, totalTokens: 28_450_000 },
       daily: [],
@@ -473,81 +486,11 @@ export function generateDemoData() {
         "claude-haiku-4-5": { inputTokens: 2_400_000, outputTokens: 1_050_000 },
       },
     },
-    timestamp,
-    coveragePct: Math.round((configured.length / totalRepos) * 100),
-    totalRepos,
-    configuredCount: configured.length,
-    unconfiguredCount: unconfigured.length,
-    totalRepoCmds: configured.reduce((sum, r) => sum + r.commands.length, 0),
-    avgHealth: Math.round(
-      configured.reduce((sum, r) => sum + r.healthScore, 0) / configured.length,
-    ),
-    driftCount: configured.filter((r) => r.drift.level === "medium" || r.drift.level === "high")
-      .length,
-    mcpCount: 5,
-    scanScope: "~/work (depth 5)",
-    insights: [
-      {
-        type: "warning",
-        title: "2 repos have high config drift",
-        detail:
-          "payments-api (23 commits since config update), acme-web (18 commits since config update)",
-        action: "Review and update CLAUDE.md in these repos",
-      },
-      {
-        type: "promote",
-        title: "1 MCP server could be promoted to global",
-        detail: "github (in 2 projects)",
-        action: "Add to ~/.claude/mcp_config.json for all projects",
-      },
-      {
-        type: "info",
-        title: "12 repos unconfigured (52%)",
-        detail: "Top candidates: mobile-app (expo), admin-portal (next), data-pipeline (python)",
-        action: "Run claude-code-dashboard init --template <stack> in these repos",
-      },
-      {
-        type: "tip",
-        title: "Quick wins to improve config health",
-        detail:
-          "design-system (65/100): add commands; shared-utils (60/100): add CLAUDE.md description",
-        action: "Small changes for measurable improvement",
-      },
+    insightsReportHtml: DEMO_INSIGHTS_HTML,
+    chains: [
+      { nodes: ["shared-ui", "acme-web", "marketing-site"], arrow: "&rarr;" },
+      { nodes: ["payments-api", "acme-web"], arrow: "&rarr;" },
     ],
-    insightsReport: {
-      subtitle: "1,386 messages across 117 sessions (365 total) | Feb 23, 2026 to Mar 10, 2026",
-      stats: [
-        { value: "1,386", label: "Messages" },
-        { value: "+33,424/-2,563", label: "Lines", isDiff: true },
-        { value: "632", label: "Files" },
-        { value: "14", label: "Days" },
-        { value: "99", label: "Msgs/Day" },
-      ],
-      glance: [
-        {
-          label: "What's working",
-          text: "Full end-to-end shipping workflow — implementation through PR creation to production deployment in single sessions.",
-        },
-        {
-          label: "What's hindering you",
-          text: "Claude frequently jumps into fixes without checking actual state first, costing correction cycles.",
-        },
-        {
-          label: "Quick wins to try",
-          text: "Create custom slash commands for repeated workflows like PR reviews and Slack message drafting.",
-        },
-      ],
-      friction: [
-        {
-          title: "Wrong Target / Misidentification",
-          desc: "Claude acts on the wrong file or setting before you catch the mistake.",
-        },
-        {
-          title: "Premature Solutions",
-          desc: "Jumps into fixes without first checking actual state of the codebase.",
-        },
-      ],
-      filePath: "~/.claude/usage-data/report.html",
-    },
+    scanScope: "~/work (depth 5)",
   };
 }
