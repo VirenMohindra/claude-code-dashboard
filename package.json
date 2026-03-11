@@ -1,5 +1,5 @@
 {
-  "name": "@virenmohindra/claude-code-dashboard",
+  "name": "@viren/claude-code-dashboard",
   "version": "0.0.1",
   "description": "A visual dashboard for your Claude Code configuration across all repos",
   "type": "module",

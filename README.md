@@ -64,13 +64,13 @@ Scans your home directory for git repos, collects Claude Code configuration (com
 ## Install
 
 ```sh
-npm install -g @virenmohindra/claude-code-dashboard
+npm install -g @viren/claude-code-dashboard
 ```
 
 Or run directly:
 
 ```sh
-npx @virenmohindra/claude-code-dashboard
+npx @viren/claude-code-dashboard
 ```
 
 Or clone and run:
@@ -133,7 +133,7 @@ Generate and open the Claude Code configuration dashboard.
 ## Steps
 
 1. Run the dashboard generator:
-   npx @virenmohindra/claude-code-dashboard --open --quiet
+   npx @viren/claude-code-dashboard --open --quiet
 ```
 <!-- prettier-ignore-end -->
 
