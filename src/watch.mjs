@@ -13,8 +13,8 @@ export function startWatch(outputPath, scanRoots, cliArgs) {
   // and noisy snapshot writes on every file change
   const forwardedArgs = process.argv
     .slice(2)
-    .filter((a) => a !== "--watch" && a !== "--diff")
-    .concat(["--quiet"]);
+    .filter((a) => a !== "--watch" && a !== "--diff" && a !== "--open")
+    .concat(["--quiet", "--no-open"]);
 
   // Resolve output path to detect and ignore self-writes
   const resolvedOutput = resolve(outputPath);
