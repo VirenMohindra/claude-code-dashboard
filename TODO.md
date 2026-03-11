@@ -50,20 +50,20 @@
 - [x] Flag repos where config is stale relative to code churn: "superapp config is 1mo old but 46 commits have landed"
 - [x] Show drift indicator on repo cards (separate from freshness dot)
 
-## v0.4.0 — Config Templates & Onboarding
+## v0.4.0 — Config Templates & Onboarding (complete)
 
 ### Template System
 
-- [ ] `claude-code-dashboard init --template react` scaffolds CLAUDE.md + .claude/rules/ based on best existing configs
-- [ ] Detect common patterns: monolithic CLAUDE.md, modular rules, command-heavy
-- [ ] Extract templates from your best-configured repos (mneme, chile, salsa)
-- [ ] Templates for: react, next, expo, node-backend, go, python, swift, generic
+- [x] `claude-code-dashboard init --template react` scaffolds CLAUDE.md + .claude/rules/ based on best existing configs
+- [x] Detect common patterns: monolithic CLAUDE.md, modular rules, command-heavy
+- [x] Extract templates from your best-configured repos (mneme, chile, salsa)
+- [x] Templates for: react, next, expo, node-backend, go, python, swift, generic
 
 ### Cross-Repo Pattern Detection
 
-- [ ] Detect duplicated config across repos (5 React repos with similar CLAUDE.md → extract shared template)
-- [ ] Suggest consolidating into global rules vs repo-specific rules
-- [ ] Show "config similarity" between repos
+- [x] Detect duplicated config across repos (5 React repos with similar CLAUDE.md → extract shared template)
+- [x] Suggest consolidating into global rules vs repo-specific rules
+- [x] Show "config similarity" between repos
 
 ## v0.5.0 — Team & Design Polish
 
