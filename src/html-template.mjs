@@ -33,6 +33,8 @@ export function generateDashboardHtml({
   driftCount,
   mcpCount,
   scanScope,
+  insights,
+  insightsReport,
 }) {
   // ── Build tab content sections ──────────────────────────────────────────
 
@@ -49,7 +51,7 @@ export function generateDashboardHtml({
               `</details>`,
           )
           .join("\n  ");
-        return `<div class="card">
+        return `<div class="card" id="section-skills">
   <h2>Skills <span class="n">${globalSkills.length}</span></h2>
   ${categoryHtml}
 </div>`;
@@ -72,9 +74,10 @@ export function generateDashboardHtml({
                 ? `<span class="badge mcp-recent">recent</span>`
                 : `<span class="badge mcp-project">project</span>`;
             const typeBadge = `<span class="badge mcp-type">${esc(s.type)}</span>`;
-            const projects = s.projects.length
-              ? `<span class="mcp-projects">${s.projects.map((p) => esc(p)).join(", ")}</span>`
-              : "";
+            const projects =
+              !s.userLevel && s.projects.length
+                ? `<span class="mcp-projects">${s.projects.map((p) => esc(p)).join(", ")}</span>`
+                : "";
             return `<div class="mcp-row${disabledClass}"><span class="mcp-name">${esc(s.name)}</span>${scopeBadge}${typeBadge}${disabledHint}${projects}</div>`;
           })
           .join("\n    ");
@@ -97,7 +100,7 @@ export function generateDashboardHtml({
     })
     .join("\n    ")}`
           : "";
-        return `<div class="card">
+        return `<div class="card" id="section-mcp">
   <h2>MCP Servers <span class="n">${mcpSummary.length}</span></h2>
   ${rows}
   ${promoteHtml}
@@ -225,14 +228,21 @@ export function generateDashboardHtml({
       while (cursor2 <= lastDate) {
         const key = cursor2.toISOString().slice(0, 10);
         const count = dateMap.get(key) || 0;
-        cells += `<div class="heatmap-cell${level(count)}" title="${esc(key)}: ${count} messages"></div>`;
+        const fmtDate = cursor2.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
+        cells += `<div class="heatmap-cell${level(count)}" title="${esc(fmtDate)}: ${count} messages"></div>`;
         cursor2.setUTCDate(cursor2.getUTCDate() + 1);
       }
 
       content += `<div class="label">Activity</div>
-      <div style="position:relative;margin-bottom:.5rem">
-        <div class="heatmap-months" style="position:relative;height:.8rem">${monthLabels}</div>
-        <div style="overflow-x:auto"><div class="heatmap">${cells}</div></div>
+      <div style="overflow-x:auto;margin-bottom:.5rem">
+        <div style="width:fit-content;position:relative">
+          <div class="heatmap-months" style="position:relative;height:.8rem">${monthLabels}</div>
+          <div class="heatmap">${cells}</div>
+        </div>
       </div>`;
     }
 
@@ -300,7 +310,7 @@ export function generateDashboardHtml({
       ${modelRows}`;
     }
 
-    return `<div class="card">
+    return `<div class="card" id="section-activity">
   <h2>Activity</h2>
   ${content}
 </div>`;
@@ -452,7 +462,8 @@ export function generateDashboardHtml({
   .chain-arrow { color: var(--text-dim); font-size: .85rem; }
 
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: .65rem; margin-bottom: 1.5rem; }
-  .stat { text-align: center; padding: .65rem .5rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+  .stat { text-align: center; padding: .65rem .5rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: border-color .15s, transform .1s; }
+  .stat:hover { border-color: var(--accent-dim); transform: translateY(-1px); }
   .stat b { display: block; font-size: 1.4rem; color: var(--accent); }
   .stat span { font-size: .6rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em; }
   .stat.coverage b { color: ${coveragePct >= 70 ? "var(--green)" : coveragePct >= 40 ? "var(--yellow)" : "var(--red)"}; }
@@ -524,6 +535,31 @@ export function generateDashboardHtml({
   .mcp-promote { font-size: .72rem; color: var(--text-dim); padding: .4rem .5rem; background: rgba(251,191,36,.05); border: 1px solid rgba(251,191,36,.15); border-radius: 6px; margin-top: .3rem; }
   .mcp-promote .mcp-name { color: var(--yellow); }
   .mcp-promote code { font-size: .65rem; color: var(--accent); }
+
+  .insight-card { margin-bottom: 1.25rem; }
+  .insight-row { display: flex; align-items: flex-start; gap: .6rem; padding: .5rem .6rem; border-radius: 6px; margin-bottom: .35rem; font-size: .78rem; line-height: 1.4; }
+  .insight-row:last-child { margin-bottom: 0; }
+  .insight-icon { flex-shrink: 0; font-size: .85rem; line-height: 1; margin-top: .1rem; }
+  .insight-body { flex: 1; min-width: 0; }
+  .insight-title { font-weight: 600; color: var(--text); }
+  .insight-detail { color: var(--text-dim); font-size: .72rem; margin-top: .15rem; }
+  .insight-action { color: var(--accent-dim); font-size: .68rem; font-style: italic; margin-top: .15rem; }
+  .insight-row.warning { background: rgba(251,191,36,.06); border: 1px solid rgba(251,191,36,.15); }
+  .insight-row.info { background: rgba(96,165,250,.06); border: 1px solid rgba(96,165,250,.15); }
+  .insight-row.tip { background: rgba(74,222,128,.06); border: 1px solid rgba(74,222,128,.15); }
+  .insight-row.promote { background: rgba(192,132,252,.06); border: 1px solid rgba(192,132,252,.15); }
+
+  .report-card { margin-bottom: 1.25rem; }
+  .report-subtitle { font-size: .72rem; color: var(--text-dim); margin-bottom: .75rem; }
+  .report-stats { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .75rem; }
+  .report-stat { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: .4rem .6rem; text-align: center; min-width: 70px; }
+  .report-stat b { display: block; font-size: 1rem; color: var(--accent); }
+  .report-stat span { font-size: .55rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; }
+  .report-glance { display: flex; flex-direction: column; gap: .5rem; margin-bottom: .75rem; }
+  .report-glance-item { font-size: .75rem; line-height: 1.5; color: var(--text-dim); padding: .5rem .6rem; background: var(--bg); border-radius: 6px; border: 1px solid var(--border); }
+  .report-glance-item strong { color: var(--text); font-weight: 600; }
+  .report-link { display: inline-block; margin-top: .5rem; font-size: .72rem; color: var(--accent); text-decoration: none; }
+  .report-link:hover { text-decoration: underline; }
   .mcp-former { opacity: .4; }
   .badge.mcp-former-badge { color: var(--text-dim); border-color: var(--border); background: var(--surface2); font-style: italic; }
 
@@ -549,6 +585,9 @@ export function generateDashboardHtml({
 
   .heatmap-months { display: flex; font-size: .5rem; color: var(--text-dim); margin-bottom: .2rem; }
   .heatmap-month { flex: 1; }
+
+  .chart-tooltip { position: fixed; pointer-events: none; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: .3rem .5rem; font-size: .7rem; white-space: nowrap; z-index: 999; box-shadow: 0 2px 8px rgba(0,0,0,.25); opacity: 0; transition: opacity .1s; }
+  .chart-tooltip.visible { opacity: 1; }
 
   .peak-hours { display: flex; align-items: flex-end; gap: 2px; height: 40px; }
   .peak-bar { flex: 1; background: var(--purple); border-radius: 2px 2px 0 0; min-width: 4px; opacity: .7; }
@@ -647,16 +686,16 @@ export function generateDashboardHtml({
 <p class="sub">generated ${timestamp} · run <code>claude-code-dashboard</code> to refresh · <a href="${esc(REPO_URL)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">v${esc(VERSION)}</a></p>
 
 <div class="stats">
-  <div class="stat coverage"><b>${coveragePct}%</b><span>Coverage (${configuredCount}/${totalRepos})</span></div>
-  <div class="stat" style="${avgHealth >= 70 ? "border-color:#4ade8033" : avgHealth >= 40 ? "border-color:#fbbf2433" : "border-color:#f8717133"}"><b style="color:${healthScoreColor(avgHealth)}">${avgHealth}</b><span>Avg Health</span></div>
-  <div class="stat"><b>${globalCmds.length}</b><span>Global Commands</span></div>
-  <div class="stat"><b>${globalSkills.length}</b><span>Skills</span></div>
-  <div class="stat"><b>${totalRepoCmds}</b><span>Repo Commands</span></div>
-  ${mcpCount > 0 ? `<div class="stat"><b>${mcpCount}</b><span>MCP Servers</span></div>` : ""}
-  ${driftCount > 0 ? `<div class="stat" style="border-color:#f8717133"><b style="color:var(--red)">${driftCount}</b><span>Drifting Repos</span></div>` : ""}
-  ${ccusageData ? `<div class="stat" style="border-color:#4ade8033"><b style="color:var(--green)">$${Math.round(Number(ccusageData.totals.totalCost) || 0).toLocaleString()}</b><span>Total Spent</span></div>` : ""}
-  ${ccusageData ? `<div class="stat"><b>${formatTokens(ccusageData.totals.totalTokens).replace(" tokens", "")}</b><span>Total Tokens</span></div>` : ""}
-  ${usageAnalytics.heavySessions > 0 ? `<div class="stat"><b>${usageAnalytics.heavySessions}</b><span>Heavy Sessions</span></div>` : ""}
+  <div class="stat coverage" data-nav="repos" data-section="repo-grid" title="View repos"><b>${coveragePct}%</b><span>Coverage (${configuredCount}/${totalRepos})</span></div>
+  <div class="stat" data-nav="repos" data-section="repo-grid" title="View repos" style="${avgHealth >= 70 ? "border-color:#4ade8033" : avgHealth >= 40 ? "border-color:#fbbf2433" : "border-color:#f8717133"}"><b style="color:${healthScoreColor(avgHealth)}">${avgHealth}</b><span>Avg Health</span></div>
+  <div class="stat" data-nav="overview" data-section="section-commands" title="View commands"><b>${globalCmds.length}</b><span>Global Commands</span></div>
+  <div class="stat" data-nav="skills-mcp" data-section="section-skills" title="View skills"><b>${globalSkills.length}</b><span>Skills</span></div>
+  <div class="stat" data-nav="repos" data-section="repo-grid" title="View repos"><b>${totalRepoCmds}</b><span>Repo Commands</span></div>
+  ${mcpCount > 0 ? `<div class="stat" data-nav="skills-mcp" data-section="section-mcp" title="View MCP servers"><b>${mcpCount}</b><span>MCP Servers</span></div>` : ""}
+  ${driftCount > 0 ? `<div class="stat" data-nav="repos" data-section="repo-grid" title="View drifting repos" style="border-color:#f8717133"><b style="color:var(--red)">${driftCount}</b><span>Drifting Repos</span></div>` : ""}
+  ${ccusageData ? `<div class="stat" data-nav="analytics" data-section="section-insights-report" title="View analytics" style="border-color:#4ade8033"><b style="color:var(--green)">$${Math.round(Number(ccusageData.totals.totalCost) || 0).toLocaleString()}</b><span>Total Spent</span></div>` : ""}
+  ${ccusageData ? `<div class="stat" data-nav="analytics" data-section="section-activity" title="View analytics"><b>${formatTokens(ccusageData.totals.totalTokens).replace(" tokens", "")}</b><span>Total Tokens</span></div>` : ""}
+  ${usageAnalytics.heavySessions > 0 ? `<div class="stat" data-nav="analytics" data-section="section-activity" title="View analytics"><b>${usageAnalytics.heavySessions}</b><span>Heavy Sessions</span></div>` : ""}
 </div>
 
 <nav class="tab-nav">
@@ -669,7 +708,7 @@ export function generateDashboardHtml({
 
 <div class="tab-content active" id="tab-overview">
   <div class="top-grid">
-    <div class="card" style="margin-bottom:0">
+    <div class="card" id="section-commands" style="margin-bottom:0">
       <h2>Global Commands <span class="n">${globalCmds.length}</span></h2>
       ${globalCmds.map((c) => renderCmd(c)).join("\n  ")}
     </div>
@@ -678,6 +717,26 @@ export function generateDashboardHtml({
       ${globalRules.map((r) => renderRule(r)).join("\n  ")}
     </div>
   </div>
+  ${
+    insights && insights.length > 0
+      ? `<div class="card insight-card">
+    <h2>Insights <span class="n">${insights.length}</span></h2>
+    ${insights
+      .map(
+        (i) =>
+          `<div class="insight-row ${esc(i.type)}">
+      <span class="insight-icon">${i.type === "warning" ? "&#9888;" : i.type === "tip" ? "&#10024;" : i.type === "promote" ? "&#8593;" : "&#9432;"}</span>
+      <div class="insight-body">
+        <div class="insight-title">${esc(i.title)}</div>
+        ${i.detail ? `<div class="insight-detail">${esc(i.detail)}</div>` : ""}
+        ${i.action ? `<div class="insight-action">${esc(i.action)}</div>` : ""}
+      </div>
+    </div>`,
+      )
+      .join("\n    ")}
+  </div>`
+      : ""
+  }
   ${chainsHtml}
   ${consolidationHtml}
 </div>
@@ -688,6 +747,38 @@ export function generateDashboardHtml({
 </div>
 
 <div class="tab-content" id="tab-analytics">
+  ${
+    insightsReport
+      ? `<div class="card report-card" id="section-insights-report">
+    <h2>Claude Code Insights</h2>
+    ${insightsReport.subtitle ? `<div class="report-subtitle">${esc(insightsReport.subtitle)}</div>` : ""}
+    ${
+      insightsReport.stats.length > 0
+        ? `<div class="report-stats">${insightsReport.stats
+            .map((s) => {
+              if (s.isDiff) {
+                const parts = s.value.match(/^([+-][^/]+)\/([-+].+)$/);
+                if (parts) {
+                  return `<div class="report-stat"><b><span style="color:var(--green)">${esc(parts[1])}</span><span style="color:var(--text-dim)">/</span><span style="color:var(--red)">${esc(parts[2])}</span></b><span>${esc(s.label)}</span></div>`;
+                }
+              }
+              return `<div class="report-stat"><b>${esc(s.value)}</b><span>${esc(s.label)}</span></div>`;
+            })
+            .join("")}</div>`
+        : ""
+    }
+    ${
+      insightsReport.glance.length > 0
+        ? `<div class="report-glance">${insightsReport.glance.map((g) => `<div class="report-glance-item"><strong>${esc(g.label)}:</strong> ${esc(g.text)}</div>`).join("")}</div>`
+        : ""
+    }
+    <a class="report-link" href="file://${esc(insightsReport.filePath)}" target="_blank">View full insights report &rarr;</a>
+  </div>`
+      : `<div class="card report-card">
+    <h2>Claude Code Insights</h2>
+    <div class="report-glance"><div class="report-glance-item">No insights report found. Run <code>/insights</code> in Claude Code to generate a personalized report with usage patterns, friction points, and feature suggestions.</div></div>
+  </div>`
+  }
   <div class="top-grid">
     ${toolsHtml || ""}
     ${langsHtml || ""}
@@ -721,13 +812,26 @@ export function generateDashboardHtml({
 
 <div class="ts">found ${totalRepos} repos · ${configuredCount} configured · ${unconfiguredCount} unconfigured · scanned ${scanScope} · ${timestamp}</div>
 
+<div class="chart-tooltip" id="chart-tooltip"></div>
 <script>
+function switchTab(tabName) {
+  document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+  var btn = document.querySelector('.tab-btn[data-tab="' + tabName + '"]');
+  if (btn) btn.classList.add('active');
+  var content = document.getElementById('tab-' + tabName);
+  if (content) content.classList.add('active');
+}
 document.querySelectorAll('.tab-btn').forEach(function(btn) {
-  btn.addEventListener('click', function() {
-    document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
-    document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
-    btn.classList.add('active');
-    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  btn.addEventListener('click', function() { switchTab(btn.dataset.tab); });
+});
+document.querySelectorAll('.stat[data-nav]').forEach(function(stat) {
+  stat.addEventListener('click', function() {
+    switchTab(stat.dataset.nav);
+    if (stat.dataset.section) {
+      var el = document.getElementById(stat.dataset.section);
+      if (el) setTimeout(function() { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
+    }
   });
 });
 
@@ -807,6 +911,34 @@ groupSelect.addEventListener('change', function() {
     grid.appendChild(h);
     groups[key].forEach(function(card) { grid.appendChild(card); });
   });
+});
+
+// Custom tooltip for heatmap cells and peak bars
+var tip = document.getElementById('chart-tooltip');
+document.addEventListener('mouseover', function(e) {
+  var t = e.target.closest('.heatmap-cell, .peak-bar');
+  if (t && t.title) {
+    tip.textContent = t.title;
+    tip.classList.add('visible');
+    t.dataset.tip = t.title;
+    t.removeAttribute('title');
+  }
+});
+document.addEventListener('mousemove', function(e) {
+  if (tip.classList.contains('visible')) {
+    tip.style.left = (e.clientX + 12) + 'px';
+    tip.style.top = (e.clientY - 28) + 'px';
+  }
+});
+document.addEventListener('mouseout', function(e) {
+  var t = e.target.closest('.heatmap-cell, .peak-bar');
+  if (t && t.dataset.tip) {
+    t.title = t.dataset.tip;
+    delete t.dataset.tip;
+  }
+  if (!e.relatedTarget || !e.relatedTarget.closest('.heatmap-cell, .peak-bar')) {
+    tip.classList.remove('visible');
+  }
 });
 </script>
 </body>

@@ -486,5 +486,68 @@ export function generateDemoData() {
       .length,
     mcpCount: 4,
     scanScope: "~/work (depth 5)",
+    insights: [
+      {
+        type: "warning",
+        title: "2 repos have high config drift",
+        detail:
+          "payments-api (23 commits since config update), acme-web (18 commits since config update)",
+        action: "Review and update CLAUDE.md in these repos",
+      },
+      {
+        type: "promote",
+        title: "1 MCP server could be promoted to global",
+        detail: "github (in 2 projects)",
+        action: "Add to ~/.claude/mcp_config.json for all projects",
+      },
+      {
+        type: "info",
+        title: "12 repos unconfigured (52%)",
+        detail: "Top candidates: mobile-app (expo), admin-portal (next), data-pipeline (python)",
+        action: "Run claude-code-dashboard init --template <stack> in these repos",
+      },
+      {
+        type: "tip",
+        title: "Quick wins to improve config health",
+        detail:
+          "design-system (65/100): add commands; shared-utils (60/100): add CLAUDE.md description",
+        action: "Small changes for measurable improvement",
+      },
+    ],
+    insightsReport: {
+      subtitle: "1,386 messages across 117 sessions (365 total) | 2026-02-23 to 2026-03-10",
+      stats: [
+        { value: "1,386", label: "Messages" },
+        { value: "+33,424/-2,563", label: "Lines" },
+        { value: "632", label: "Files" },
+        { value: "14", label: "Days" },
+        { value: "99", label: "Msgs/Day" },
+      ],
+      glance: [
+        {
+          label: "What's working",
+          text: "Full end-to-end shipping workflow — implementation through PR creation to production deployment in single sessions.",
+        },
+        {
+          label: "What's hindering you",
+          text: "Claude frequently jumps into fixes without checking actual state first, costing correction cycles.",
+        },
+        {
+          label: "Quick wins to try",
+          text: "Create custom slash commands for repeated workflows like PR reviews and Slack message drafting.",
+        },
+      ],
+      friction: [
+        {
+          title: "Wrong Target / Misidentification",
+          desc: "Claude acts on the wrong file or setting before you catch the mistake.",
+        },
+        {
+          title: "Premature Solutions",
+          desc: "Jumps into fixes without first checking actual state of the codebase.",
+        },
+      ],
+      filePath: "~/.claude/usage-data/report.html",
+    },
   };
 }
