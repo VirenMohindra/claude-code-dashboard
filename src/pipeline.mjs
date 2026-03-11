@@ -11,6 +11,7 @@ import { shortPath } from "./helpers.mjs";
 import { relativeTime, freshnessClass } from "./freshness.mjs";
 import {
   computeHealthScore,
+  classifyDrift,
   detectConfigPattern,
   findExemplar,
   generateSuggestions,
@@ -76,17 +77,7 @@ export function buildDashboardData(raw) {
       entry.configPattern = detectConfigPattern(entry);
 
       // Drift classification from pre-computed gitRevCount (no git I/O)
-      // gitRevCount: null/undefined = unknown, 0 = synced, 1-5 = low, 6-20 = medium, 21+ = high
-      if (repo.gitRevCount == null || repo.gitRevCount < 0) {
-        entry.drift = { level: "unknown", commitsSince: 0 };
-      } else {
-        const commitsSince = Math.max(0, repo.gitRevCount);
-        let level = "synced";
-        if (commitsSince > 20) level = "high";
-        else if (commitsSince > 5) level = "medium";
-        else if (commitsSince > 0) level = "low";
-        entry.drift = { level, commitsSince };
-      }
+      entry.drift = classifyDrift(repo.gitRevCount);
 
       configured.push(entry);
     } else {

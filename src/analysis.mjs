@@ -90,6 +90,15 @@ export function detectTechStack(repoDir) {
   return { stacks: [...stacks] };
 }
 
+export function classifyDrift(commitCount) {
+  if (commitCount == null || commitCount < 0) return { level: "unknown", commitsSince: 0 };
+  const n = Math.max(0, Number(commitCount) || 0);
+  if (n === 0) return { level: "synced", commitsSince: 0 };
+  if (n <= 5) return { level: "low", commitsSince: n };
+  if (n <= 20) return { level: "medium", commitsSince: n };
+  return { level: "high", commitsSince: n };
+}
+
 export function computeDrift(repoDir, configTimestamp) {
   if (!configTimestamp) return { level: "unknown", commitsSince: 0 };
 
@@ -101,11 +110,7 @@ export function computeDrift(repoDir, configTimestamp) {
   if (!Number.isFinite(parsed)) return { level: "unknown", commitsSince: 0 };
 
   const commitsSince = Math.max(0, parsed - 1); // -1 to exclude the config commit itself
-
-  if (commitsSince === 0) return { level: "synced", commitsSince: 0 };
-  if (commitsSince <= 5) return { level: "low", commitsSince };
-  if (commitsSince <= 20) return { level: "medium", commitsSince };
-  return { level: "high", commitsSince };
+  return classifyDrift(commitsSince);
 }
 
 export function findExemplar(stack, configuredRepos) {
