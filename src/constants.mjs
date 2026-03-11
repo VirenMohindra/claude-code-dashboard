@@ -2,6 +2,8 @@ import { join } from "path";
 import { homedir } from "os";
 
 export const VERSION = "0.0.2";
+export const REPO_URL = "https://github.com/VirenMohindra/claude-code-dashboard";
+export const NPM_PACKAGE = "@viren/claude-code-dashboard";
 
 export const HOME = homedir();
 export const CLAUDE_DIR = join(HOME, ".claude");

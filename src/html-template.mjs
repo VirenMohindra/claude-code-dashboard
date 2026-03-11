@@ -1,5 +1,5 @@
 import { esc, formatTokens } from "./helpers.mjs";
-import { QUICK_REFERENCE } from "./constants.mjs";
+import { QUICK_REFERENCE, VERSION, REPO_URL } from "./constants.mjs";
 import {
   renderCmd,
   renderRule,
@@ -34,6 +34,326 @@ export function generateDashboardHtml({
   mcpCount,
   scanScope,
 }) {
+  // ── Build tab content sections ──────────────────────────────────────────
+
+  // Skills card
+  const skillsHtml = globalSkills.length
+    ? (() => {
+        const groups = groupSkillsByCategory(globalSkills);
+        const categoryHtml = Object.entries(groups)
+          .map(
+            ([cat, skills], idx) =>
+              `<details class="skill-category"${idx === 0 ? " open" : ""}>` +
+              `<summary class="skill-category-label">${esc(cat)} <span class="cat-n">${skills.length}</span></summary>` +
+              skills.map((s) => renderSkill(s)).join("\n    ") +
+              `</details>`,
+          )
+          .join("\n  ");
+        return `<div class="card">
+  <h2>Skills <span class="n">${globalSkills.length}</span></h2>
+  ${categoryHtml}
+</div>`;
+      })()
+    : "";
+
+  // MCP card
+  const mcpHtml = mcpSummary.length
+    ? (() => {
+        const rows = mcpSummary
+          .map((s) => {
+            const disabledClass = s.disabledIn > 0 ? " mcp-disabled" : "";
+            const disabledHint =
+              s.disabledIn > 0
+                ? `<span class="mcp-disabled-hint">disabled in ${s.disabledIn} project${s.disabledIn > 1 ? "s" : ""}</span>`
+                : "";
+            const scopeBadge = s.userLevel
+              ? `<span class="badge mcp-global">global</span>`
+              : `<span class="badge mcp-project">project</span>`;
+            const typeBadge = `<span class="badge mcp-type">${esc(s.type)}</span>`;
+            const projects = s.projects.length
+              ? `<span class="mcp-projects">${s.projects.map((p) => esc(p)).join(", ")}</span>`
+              : "";
+            return `<div class="mcp-row${disabledClass}"><span class="mcp-name">${esc(s.name)}</span>${scopeBadge}${typeBadge}${disabledHint}${projects}</div>`;
+          })
+          .join("\n    ");
+        const promoteHtml = mcpPromotions.length
+          ? mcpPromotions
+              .map(
+                (p) =>
+                  `<div class="mcp-promote"><span class="mcp-name">${esc(p.name)}</span> installed in ${p.projects.length} projects &rarr; add to <code>~/.claude/mcp_config.json</code></div>`,
+              )
+              .join("\n    ")
+          : "";
+        const formerHtml = formerMcpServers.length
+          ? `<div class="label" style="margin-top:.75rem">Formerly Installed</div>
+  ${formerMcpServers.map((name) => `<div class="mcp-row mcp-former"><span class="mcp-name">${esc(name)}</span><span class="badge mcp-former-badge">removed</span></div>`).join("\n    ")}`
+          : "";
+        return `<div class="card">
+  <h2>MCP Servers <span class="n">${mcpSummary.length}</span></h2>
+  ${rows}
+  ${promoteHtml}
+  ${formerHtml}
+</div>`;
+      })()
+    : "";
+
+  // Usage bar cards (tools, languages, errors)
+  const toolsHtml = usageAnalytics.topTools.length
+    ? (() => {
+        const maxCount = usageAnalytics.topTools[0].count;
+        const rows = usageAnalytics.topTools
+          .map((t) => {
+            const pct = maxCount > 0 ? Math.round((t.count / maxCount) * 100) : 0;
+            return `<div class="usage-bar-row"><span class="usage-bar-label">${esc(t.name)}</span><div class="usage-bar-track"><div class="usage-bar-fill usage-bar-tool" style="width:${pct}%"></div></div><span class="usage-bar-count">${t.count.toLocaleString()}</span></div>`;
+          })
+          .join("\n    ");
+        return `<div class="card">
+  <h2>Top Tools Used <span class="n">${usageAnalytics.topTools.length}</span></h2>
+  ${rows}
+</div>`;
+      })()
+    : "";
+
+  const langsHtml = usageAnalytics.topLanguages.length
+    ? (() => {
+        const maxCount = usageAnalytics.topLanguages[0].count;
+        const rows = usageAnalytics.topLanguages
+          .map((l) => {
+            const pct = maxCount > 0 ? Math.round((l.count / maxCount) * 100) : 0;
+            return `<div class="usage-bar-row"><span class="usage-bar-label">${esc(l.name)}</span><div class="usage-bar-track"><div class="usage-bar-fill usage-bar-lang" style="width:${pct}%"></div></div><span class="usage-bar-count">${l.count.toLocaleString()}</span></div>`;
+          })
+          .join("\n    ");
+        return `<div class="card">
+  <h2>Languages <span class="n">${usageAnalytics.topLanguages.length}</span></h2>
+  ${rows}
+</div>`;
+      })()
+    : "";
+
+  const errorsHtml = usageAnalytics.errorCategories.length
+    ? (() => {
+        const maxCount = usageAnalytics.errorCategories[0].count;
+        const rows = usageAnalytics.errorCategories
+          .map((e) => {
+            const pct = maxCount > 0 ? Math.round((e.count / maxCount) * 100) : 0;
+            return `<div class="usage-bar-row"><span class="usage-bar-label">${esc(e.name)}</span><div class="usage-bar-track"><div class="usage-bar-fill usage-bar-error" style="width:${pct}%"></div></div><span class="usage-bar-count">${e.count.toLocaleString()}</span></div>`;
+          })
+          .join("\n    ");
+        return `<div class="card">
+  <h2>Top Errors <span class="n">${usageAnalytics.errorCategories.length}</span></h2>
+  ${rows}
+</div>`;
+      })()
+    : "";
+
+  // Activity/heatmap/peak hours/model usage card
+  const activityHtml = (() => {
+    const dailyActivity = statsCache.dailyActivity || [];
+    const hourCounts = statsCache.hourCounts || {};
+    const modelUsage = statsCache.modelUsage || {};
+    const hasActivity = dailyActivity.length > 0;
+    const hasHours = Object.keys(hourCounts).length > 0;
+    const hasModels = Object.keys(modelUsage).length > 0;
+
+    if (!hasActivity && !hasHours && !hasModels && !ccusageData) return "";
+
+    let content = "";
+
+    if (hasActivity) {
+      const dateMap = new Map(dailyActivity.map((d) => [d.date, d.messageCount || 0]));
+      const dates = dailyActivity.map((d) => d.date).sort();
+      const lastDate = new Date(dates[dates.length - 1]);
+      const firstDate = new Date(lastDate);
+      firstDate.setDate(firstDate.getDate() - 364);
+
+      const nonZero = dailyActivity
+        .map((d) => d.messageCount || 0)
+        .filter((n) => n > 0)
+        .sort((a, b) => a - b);
+      const q1 = nonZero[Math.floor(nonZero.length * 0.25)] || 1;
+      const q2 = nonZero[Math.floor(nonZero.length * 0.5)] || 2;
+      const q3 = nonZero[Math.floor(nonZero.length * 0.75)] || 3;
+
+      function level(count) {
+        if (count === 0) return "";
+        if (count <= q1) return " l1";
+        if (count <= q2) return " l2";
+        if (count <= q3) return " l3";
+        return " l4";
+      }
+
+      const start = new Date(firstDate);
+      start.setUTCDate(start.getUTCDate() - start.getUTCDay());
+
+      const months = [];
+      let lastMonth = -1;
+      const cursor1 = new Date(start);
+      let weekIdx = 0;
+      while (cursor1 <= lastDate) {
+        if (cursor1.getUTCDay() === 0) {
+          const m = cursor1.getUTCMonth();
+          if (m !== lastMonth) {
+            months.push({
+              name: cursor1.toLocaleString("en", { month: "short", timeZone: "UTC" }),
+              week: weekIdx,
+            });
+            lastMonth = m;
+          }
+          weekIdx++;
+        }
+        cursor1.setUTCDate(cursor1.getUTCDate() + 1);
+      }
+      const totalWeeks = weekIdx;
+      const monthLabels = months
+        .map((m) => {
+          const left = totalWeeks > 0 ? Math.round((m.week / totalWeeks) * 100) : 0;
+          return `<span class="heatmap-month" style="position:absolute;left:${left}%">${m.name}</span>`;
+        })
+        .join("");
+
+      let cells = "";
+      const cursor2 = new Date(start);
+      while (cursor2 <= lastDate) {
+        const key = cursor2.toISOString().slice(0, 10);
+        const count = dateMap.get(key) || 0;
+        cells += `<div class="heatmap-cell${level(count)}" title="${esc(key)}: ${count} messages"></div>`;
+        cursor2.setUTCDate(cursor2.getUTCDate() + 1);
+      }
+
+      content += `<div class="label">Activity</div>
+      <div style="position:relative;margin-bottom:.5rem">
+        <div class="heatmap-months" style="position:relative;height:.8rem">${monthLabels}</div>
+        <div style="overflow-x:auto"><div class="heatmap">${cells}</div></div>
+      </div>`;
+    }
+
+    if (hasHours) {
+      const maxHour = Math.max(...Object.values(hourCounts), 1);
+      let bars = "";
+      let labels = "";
+      for (let h = 0; h < 24; h++) {
+        const count = hourCounts[String(h)] || 0;
+        const pct = Math.round((count / maxHour) * 100);
+        bars += `<div class="peak-bar" style="height:${Math.max(pct, 2)}%" title="${esc(String(h))}:00 — ${count} messages"></div>`;
+        labels += `<div class="peak-label">${h % 6 === 0 ? h : ""}</div>`;
+      }
+      content += `<div class="label" style="margin-top:.75rem">Peak Hours</div>
+      <div class="peak-hours">${bars}</div>
+      <div class="peak-labels">${labels}</div>`;
+    }
+
+    if (ccusageData) {
+      const modelCosts = {};
+      for (const day of ccusageData.daily) {
+        for (const mb of day.modelBreakdowns || []) {
+          if (!modelCosts[mb.modelName]) modelCosts[mb.modelName] = { cost: 0, tokens: 0 };
+          modelCosts[mb.modelName].cost += mb.cost || 0;
+          modelCosts[mb.modelName].tokens +=
+            (mb.inputTokens || 0) +
+            (mb.outputTokens || 0) +
+            (mb.cacheCreationTokens || 0) +
+            (mb.cacheReadTokens || 0);
+        }
+      }
+      const modelRows = Object.entries(modelCosts)
+        .sort((a, b) => b[1].cost - a[1].cost)
+        .map(
+          ([name, data]) =>
+            `<div class="model-row"><span class="model-name">${esc(name)}</span><span class="model-tokens">$${Math.round(data.cost).toLocaleString()} · ${formatTokens(data.tokens)}</span></div>`,
+        )
+        .join("\n      ");
+
+      const t = ccusageData.totals;
+      const breakdownHtml = `<div class="token-breakdown">
+      <div class="tb-row"><span class="tb-label">Cache Read</span><span class="tb-val">${formatTokens(t.cacheReadTokens)}</span></div>
+      <div class="tb-row"><span class="tb-label">Cache Creation</span><span class="tb-val">${formatTokens(t.cacheCreationTokens)}</span></div>
+      <div class="tb-row"><span class="tb-label">Output</span><span class="tb-val">${formatTokens(t.outputTokens)}</span></div>
+      <div class="tb-row"><span class="tb-label">Input</span><span class="tb-val">${formatTokens(t.inputTokens)}</span></div>
+    </div>`;
+
+      content += `<div class="label" style="margin-top:.75rem">Model Usage (via ccusage)</div>
+      ${modelRows}
+      <div class="label" style="margin-top:.75rem">Token Breakdown</div>
+      ${breakdownHtml}`;
+    } else if (hasModels) {
+      const modelRows = Object.entries(modelUsage)
+        .map(([name, usage]) => {
+          const total = (usage.inputTokens || 0) + (usage.outputTokens || 0);
+          return { name, total };
+        })
+        .sort((a, b) => b.total - a.total)
+        .map(
+          (m) =>
+            `<div class="model-row"><span class="model-name">${esc(m.name)}</span><span class="model-tokens">${formatTokens(m.total)}</span></div>`,
+        )
+        .join("\n      ");
+      content += `<div class="label" style="margin-top:.75rem">Model Usage (partial — install ccusage for full data)</div>
+      ${modelRows}`;
+    }
+
+    return `<div class="card">
+  <h2>Activity</h2>
+  ${content}
+</div>`;
+  })();
+
+  // Chains
+  const chainsHtml = chains.length
+    ? `<div class="card">
+  <h2>Dependency Chains</h2>
+  ${chains.map((c) => `<div class="chain">${c.nodes.map((n, i) => `<span class="chain-node">${esc(n.trim())}</span>${i < c.nodes.length - 1 ? `<span class="chain-arrow">${c.arrow}</span>` : ""}`).join("")}</div>`).join("\n  ")}
+</div>`
+    : "";
+
+  // Consolidation
+  const consolidationHtml = consolidationGroups.length
+    ? `<div class="card">
+  <h2>Consolidation Opportunities <span class="n">${consolidationGroups.length}</span></h2>
+  ${consolidationGroups.map((g) => `<div class="consolidation-hint"><span class="consolidation-stack">${esc(g.stack)}</span> <span class="consolidation-text">${esc(g.suggestion)}</span></div>`).join("\n  ")}
+</div>`
+    : "";
+
+  // Unconfigured repos
+  const unconfiguredHtml = unconfigured.length
+    ? `<details class="card">
+  <summary style="cursor:pointer;list-style:none"><h2 style="margin:0">Unconfigured Repos <span class="n">${unconfiguredCount}</span></h2></summary>
+  <div style="margin-top:.75rem">
+    <div class="unconfigured-grid">
+      ${unconfigured
+        .map((r) => {
+          const stackTag =
+            r.techStack && r.techStack.length
+              ? `<span class="stack-tag">${esc(r.techStack.join(", "))}</span>`
+              : "";
+          const suggestionsHtml =
+            r.suggestions && r.suggestions.length
+              ? `<div class="suggestion-hints">${r.suggestions.map((s) => `<span class="suggestion-hint">${esc(s)}</span>`).join("")}</div>`
+              : "";
+          return `<div class="unconfigured-item">${esc(r.name)}${stackTag}<span class="upath">${esc(r.shortPath)}</span>${suggestionsHtml}</div>`;
+        })
+        .join("\n      ")}
+    </div>
+  </div>
+</details>`
+    : "";
+
+  // Quick reference
+  const referenceHtml = `<div class="card">
+  <h2>Quick Reference</h2>
+  <div class="ref-grid">
+    <div class="ref-col">
+      <div class="label">Essential Commands</div>
+      ${QUICK_REFERENCE.essentialCommands.map((c) => `<div class="ref-row"><code class="ref-cmd">${esc(c.cmd)}</code><span class="ref-desc">${esc(c.desc)}</span></div>`).join("\n      ")}
+    </div>
+    <div class="ref-col">
+      <div class="label">Built-in Tools</div>
+      ${QUICK_REFERENCE.tools.map((t) => `<div class="ref-row"><code class="ref-cmd">${esc(t.name)}</code><span class="ref-desc">${esc(t.desc)}</span></div>`).join("\n      ")}
+      <div class="label" style="margin-top:.75rem">Keyboard Shortcuts</div>
+      ${QUICK_REFERENCE.shortcuts.map((s) => `<div class="ref-row"><kbd class="ref-key">${esc(s.keys)}</kbd><span class="ref-desc">${esc(s.desc)}</span></div>`).join("\n      ")}
+    </div>
+  </div>
+</div>`;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -61,14 +381,27 @@ export function generateDashboardHtml({
   }
   code, .cmd-name { font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace; }
   h1 { font-size: 1.4rem; font-weight: 600; color: var(--accent); margin-bottom: .2rem; }
-  .sub { color: var(--text-dim); font-size: .78rem; margin-bottom: 1.5rem; }
+  .sub { color: var(--text-dim); font-size: .78rem; margin-bottom: 1rem; }
   kbd { background: var(--surface2); border: 1px solid var(--border); border-radius: 3px; padding: .05rem .3rem; font-size: .7rem; font-family: inherit; }
 
+  /* ── Tabs ─────────────────────────────────────────────────── */
+  .tab-nav { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; overflow-x: auto; }
+  .tab-btn {
+    padding: .6rem 1.2rem; font-size: .78rem; font-weight: 500; color: var(--text-dim);
+    background: none; border: none; border-bottom: 2px solid transparent;
+    cursor: pointer; white-space: nowrap; font-family: inherit; transition: color .15s, border-color .15s;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* ── Cards ────────────────────────────────────────────────── */
   .top-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem; }
   @media (max-width: 900px) { .top-grid { grid-template-columns: 1fr; } }
 
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; overflow: hidden; }
-  .card.full { grid-column: 1 / -1; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; overflow: hidden; margin-bottom: 1.25rem; }
+  .card:last-child { margin-bottom: 0; }
   .card h2 { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim); margin-bottom: .75rem; display: flex; align-items: center; gap: .5rem; }
   .card h2 .n { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: .05rem .35rem; font-size: .65rem; color: var(--accent); }
 
@@ -191,8 +524,8 @@ export function generateDashboardHtml({
   .usage-bar-error { background: linear-gradient(90deg, var(--red), var(--yellow)); }
   .usage-bar-count { font-size: .65rem; color: var(--text-dim); min-width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
 
-  .heatmap { display: grid; grid-template-rows: repeat(7, 1fr); grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; }
-  .heatmap-cell { aspect-ratio: 1; border-radius: 2px; background: var(--surface2); min-width: 6px; min-height: 6px; }
+  .heatmap { display: grid; grid-template-rows: repeat(7, 10px); grid-auto-flow: column; grid-auto-columns: 10px; gap: 3px; overflow-x: auto; width: fit-content; max-width: 100%; }
+  .heatmap-cell { border-radius: 2px; background: var(--surface2); width: 10px; height: 10px; }
   .heatmap-cell.l1 { background: #0e4429; }
   .heatmap-cell.l2 { background: #006d32; }
   .heatmap-cell.l3 { background: #26a641; }
@@ -231,6 +564,9 @@ export function generateDashboardHtml({
   .quick-win { font-size: .6rem; padding: .15rem .4rem; border-radius: 3px; background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.2); color: var(--yellow); }
   .matched-skills { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: .5rem; }
   .matched-skill { font-size: .6rem; padding: .12rem .4rem; border-radius: 3px; background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.2); color: var(--yellow); font-family: 'SF Mono', monospace; }
+  .similar-repos { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: .5rem; }
+  .similar-repo { font-size: .6rem; padding: .12rem .4rem; border-radius: 3px; background: rgba(99,179,237,.08); border: 1px solid rgba(99,179,237,.2); color: var(--blue); font-family: 'SF Mono', monospace; }
+  .similar-repo small { opacity: .6; }
   .consolidation-hint { padding: .45rem .6rem; background: var(--surface2); border-radius: 6px; margin-top: .4rem; display: flex; align-items: baseline; gap: .5rem; }
   .consolidation-hint:first-child { margin-top: 0; }
   .consolidation-stack { font-size: .7rem; font-weight: 600; color: var(--accent); white-space: nowrap; }
@@ -296,7 +632,7 @@ export function generateDashboardHtml({
 <body>
 <h1>claude code dashboard</h1>
 <button id="theme-toggle" class="theme-toggle" title="Toggle light/dark mode" aria-label="Toggle theme"><span class="theme-icon"></span></button>
-<p class="sub">generated ${timestamp} · run <code>claude-code-dashboard</code> to refresh · click to expand</p>
+<p class="sub">generated ${timestamp} · run <code>claude-code-dashboard</code> to refresh · <a href="${REPO_URL}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">v${VERSION}</a></p>
 
 <div class="stats">
   <div class="stat coverage"><b>${coveragePct}%</b><span>Coverage (${configuredCount}/${totalRepos})</span></div>
@@ -311,371 +647,88 @@ export function generateDashboardHtml({
   ${usageAnalytics.heavySessions > 0 ? `<div class="stat"><b>${usageAnalytics.heavySessions}</b><span>Heavy Sessions</span></div>` : ""}
 </div>
 
-<div class="top-grid">
-<div class="card">
-  <h2>Global Commands <span class="n">${globalCmds.length}</span></h2>
-  ${globalCmds.map((c) => renderCmd(c)).join("\n  ")}
-</div>
-<div class="card">
-  <h2>Global Rules <span class="n">${globalRules.length}</span></h2>
-  ${globalRules.map((r) => renderRule(r)).join("\n  ")}
-</div>
-${
-  globalSkills.length
-    ? (() => {
-        const groups = groupSkillsByCategory(globalSkills);
-        const categoryHtml = Object.entries(groups)
-          .map(
-            ([cat, skills], idx) =>
-              `<details class="skill-category"${idx === 0 ? " open" : ""}>` +
-              `<summary class="skill-category-label">${esc(cat)} <span class="cat-n">${skills.length}</span></summary>` +
-              skills.map((s) => renderSkill(s)).join("\n    ") +
-              `</details>`,
-          )
-          .join("\n  ");
-        return `<div class="card full">
-  <h2>Skills <span class="n">${globalSkills.length}</span></h2>
-  ${categoryHtml}
-</div>`;
-      })()
-    : ""
-}
-${
-  mcpSummary.length
-    ? (() => {
-        const rows = mcpSummary
-          .map((s) => {
-            const disabledClass = s.disabledIn > 0 ? " mcp-disabled" : "";
-            const disabledHint =
-              s.disabledIn > 0
-                ? `<span class="mcp-disabled-hint">disabled in ${s.disabledIn} project${s.disabledIn > 1 ? "s" : ""}</span>`
-                : "";
-            const scopeBadge = s.userLevel
-              ? `<span class="badge mcp-global">global</span>`
-              : `<span class="badge mcp-project">project</span>`;
-            const typeBadge = `<span class="badge mcp-type">${esc(s.type)}</span>`;
-            const projects = s.projects.length
-              ? `<span class="mcp-projects">${s.projects.map((p) => esc(p)).join(", ")}</span>`
-              : "";
-            return `<div class="mcp-row${disabledClass}"><span class="mcp-name">${esc(s.name)}</span>${scopeBadge}${typeBadge}${disabledHint}${projects}</div>`;
-          })
-          .join("\n    ");
-        const promoteHtml = mcpPromotions.length
-          ? mcpPromotions
-              .map(
-                (p) =>
-                  `<div class="mcp-promote"><span class="mcp-name">${esc(p.name)}</span> installed in ${p.projects.length} projects &rarr; add to <code>~/.claude/mcp_config.json</code></div>`,
-              )
-              .join("\n    ")
-          : "";
-        const formerHtml = formerMcpServers.length
-          ? `<div class="label" style="margin-top:.75rem">Formerly Installed</div>
-  ${formerMcpServers.map((name) => `<div class="mcp-row mcp-former"><span class="mcp-name">${esc(name)}</span><span class="badge mcp-former-badge">removed</span></div>`).join("\n    ")}`
-          : "";
-        return `<div class="card full">
-  <h2>MCP Servers <span class="n">${mcpSummary.length}</span></h2>
-  ${rows}
-  ${promoteHtml}
-  ${formerHtml}
-</div>`;
-      })()
-    : ""
-}
-${
-  usageAnalytics.topTools.length
-    ? (() => {
-        const maxCount = usageAnalytics.topTools[0].count;
-        const rows = usageAnalytics.topTools
-          .map((t) => {
-            const pct = maxCount > 0 ? Math.round((t.count / maxCount) * 100) : 0;
-            return `<div class="usage-bar-row"><span class="usage-bar-label">${esc(t.name)}</span><div class="usage-bar-track"><div class="usage-bar-fill usage-bar-tool" style="width:${pct}%"></div></div><span class="usage-bar-count">${t.count.toLocaleString()}</span></div>`;
-          })
-          .join("\n    ");
-        return `<div class="card">
-  <h2>Top Tools Used <span class="n">${usageAnalytics.topTools.length}</span></h2>
-  ${rows}
-</div>`;
-      })()
-    : ""
-}
-${
-  usageAnalytics.topLanguages.length
-    ? (() => {
-        const maxCount = usageAnalytics.topLanguages[0].count;
-        const rows = usageAnalytics.topLanguages
-          .map((l) => {
-            const pct = maxCount > 0 ? Math.round((l.count / maxCount) * 100) : 0;
-            return `<div class="usage-bar-row"><span class="usage-bar-label">${esc(l.name)}</span><div class="usage-bar-track"><div class="usage-bar-fill usage-bar-lang" style="width:${pct}%"></div></div><span class="usage-bar-count">${l.count.toLocaleString()}</span></div>`;
-          })
-          .join("\n    ");
-        return `<div class="card">
-  <h2>Languages <span class="n">${usageAnalytics.topLanguages.length}</span></h2>
-  ${rows}
-</div>`;
-      })()
-    : ""
-}
-${
-  usageAnalytics.errorCategories.length
-    ? (() => {
-        const maxCount = usageAnalytics.errorCategories[0].count;
-        const rows = usageAnalytics.errorCategories
-          .map((e) => {
-            const pct = maxCount > 0 ? Math.round((e.count / maxCount) * 100) : 0;
-            return `<div class="usage-bar-row"><span class="usage-bar-label">${esc(e.name)}</span><div class="usage-bar-track"><div class="usage-bar-fill usage-bar-error" style="width:${pct}%"></div></div><span class="usage-bar-count">${e.count.toLocaleString()}</span></div>`;
-          })
-          .join("\n    ");
-        return `<div class="card">
-  <h2>Top Errors <span class="n">${usageAnalytics.errorCategories.length}</span></h2>
-  ${rows}
-</div>`;
-      })()
-    : ""
-}
-${(() => {
-  const dailyActivity = statsCache.dailyActivity || [];
-  const hourCounts = statsCache.hourCounts || {};
-  const modelUsage = statsCache.modelUsage || {};
-  const hasActivity = dailyActivity.length > 0;
-  const hasHours = Object.keys(hourCounts).length > 0;
-  const hasModels = Object.keys(modelUsage).length > 0;
+<nav class="tab-nav">
+  <button class="tab-btn active" data-tab="overview">Overview</button>
+  <button class="tab-btn" data-tab="skills-mcp">Skills & MCP</button>
+  <button class="tab-btn" data-tab="analytics">Analytics</button>
+  <button class="tab-btn" data-tab="repos">Repos</button>
+  <button class="tab-btn" data-tab="reference">Reference</button>
+</nav>
 
-  if (!hasActivity && !hasHours && !hasModels && !ccusageData) return "";
-
-  let content = "";
-
-  // Activity heatmap
-  if (hasActivity) {
-    const dateMap = new Map(dailyActivity.map((d) => [d.date, d.messageCount || 0]));
-    const dates = dailyActivity.map((d) => d.date).sort();
-    const lastDate = new Date(dates[dates.length - 1]);
-    const earliest = new Date(lastDate);
-    earliest.setDate(earliest.getDate() - 364);
-    const firstDate = new Date(dates[0]) < earliest ? earliest : new Date(dates[0]);
-
-    const nonZero = dailyActivity
-      .map((d) => d.messageCount || 0)
-      .filter((n) => n > 0)
-      .sort((a, b) => a - b);
-    const q1 = nonZero[Math.floor(nonZero.length * 0.25)] || 1;
-    const q2 = nonZero[Math.floor(nonZero.length * 0.5)] || 2;
-    const q3 = nonZero[Math.floor(nonZero.length * 0.75)] || 3;
-
-    function level(count) {
-      if (count === 0) return "";
-      if (count <= q1) return " l1";
-      if (count <= q2) return " l2";
-      if (count <= q3) return " l3";
-      return " l4";
-    }
-
-    const start = new Date(firstDate);
-    start.setUTCDate(start.getUTCDate() - start.getUTCDay());
-
-    const months = [];
-    let lastMonth = -1;
-    const cursor1 = new Date(start);
-    let weekIdx = 0;
-    while (cursor1 <= lastDate) {
-      if (cursor1.getUTCDay() === 0) {
-        const m = cursor1.getUTCMonth();
-        if (m !== lastMonth) {
-          months.push({
-            name: cursor1.toLocaleString("en", { month: "short", timeZone: "UTC" }),
-            week: weekIdx,
-          });
-          lastMonth = m;
-        }
-        weekIdx++;
-      }
-      cursor1.setUTCDate(cursor1.getUTCDate() + 1);
-    }
-    const totalWeeks = weekIdx;
-    const monthLabels = months
-      .map((m) => {
-        const left = totalWeeks > 0 ? Math.round((m.week / totalWeeks) * 100) : 0;
-        return `<span class="heatmap-month" style="position:absolute;left:${left}%">${m.name}</span>`;
-      })
-      .join("");
-
-    let cells = "";
-    const cursor2 = new Date(start);
-    while (cursor2 <= lastDate) {
-      const key = cursor2.toISOString().slice(0, 10);
-      const count = dateMap.get(key) || 0;
-      cells += `<div class="heatmap-cell${level(count)}" title="${esc(key)}: ${count} messages"></div>`;
-      cursor2.setUTCDate(cursor2.getUTCDate() + 1);
-    }
-
-    content += `<div class="label">Activity</div>
-      <div style="position:relative;margin-bottom:.5rem">
-        <div class="heatmap-months" style="position:relative;height:.8rem">${monthLabels}</div>
-        <div style="overflow-x:auto"><div class="heatmap">${cells}</div></div>
-      </div>`;
-  }
-
-  // Peak hours
-  if (hasHours) {
-    const maxHour = Math.max(...Object.values(hourCounts), 1);
-    let bars = "";
-    let labels = "";
-    for (let h = 0; h < 24; h++) {
-      const count = hourCounts[String(h)] || 0;
-      const pct = Math.round((count / maxHour) * 100);
-      bars += `<div class="peak-bar" style="height:${Math.max(pct, 2)}%" title="${esc(String(h))}:00 — ${count} messages"></div>`;
-      labels += `<div class="peak-label">${h % 6 === 0 ? h : ""}</div>`;
-    }
-    content += `<div class="label" style="margin-top:.75rem">Peak Hours</div>
-      <div class="peak-hours">${bars}</div>
-      <div class="peak-labels">${labels}</div>`;
-  }
-
-  // Model usage
-  if (ccusageData) {
-    const modelCosts = {};
-    for (const day of ccusageData.daily) {
-      for (const mb of day.modelBreakdowns || []) {
-        if (!modelCosts[mb.modelName]) modelCosts[mb.modelName] = { cost: 0, tokens: 0 };
-        modelCosts[mb.modelName].cost += mb.cost || 0;
-        modelCosts[mb.modelName].tokens +=
-          (mb.inputTokens || 0) +
-          (mb.outputTokens || 0) +
-          (mb.cacheCreationTokens || 0) +
-          (mb.cacheReadTokens || 0);
-      }
-    }
-    const modelRows = Object.entries(modelCosts)
-      .sort((a, b) => b[1].cost - a[1].cost)
-      .map(
-        ([name, data]) =>
-          `<div class="model-row"><span class="model-name">${esc(name)}</span><span class="model-tokens">$${Math.round(data.cost).toLocaleString()} · ${formatTokens(data.tokens)}</span></div>`,
-      )
-      .join("\n      ");
-
-    const t = ccusageData.totals;
-    const breakdownHtml = `<div class="token-breakdown">
-      <div class="tb-row"><span class="tb-label">Cache Read</span><span class="tb-val">${formatTokens(t.cacheReadTokens)}</span></div>
-      <div class="tb-row"><span class="tb-label">Cache Creation</span><span class="tb-val">${formatTokens(t.cacheCreationTokens)}</span></div>
-      <div class="tb-row"><span class="tb-label">Output</span><span class="tb-val">${formatTokens(t.outputTokens)}</span></div>
-      <div class="tb-row"><span class="tb-label">Input</span><span class="tb-val">${formatTokens(t.inputTokens)}</span></div>
-    </div>`;
-
-    content += `<div class="label" style="margin-top:.75rem">Model Usage (via ccusage)</div>
-      ${modelRows}
-      <div class="label" style="margin-top:.75rem">Token Breakdown</div>
-      ${breakdownHtml}`;
-  } else if (hasModels) {
-    const modelRows = Object.entries(modelUsage)
-      .map(([name, usage]) => {
-        const total = (usage.inputTokens || 0) + (usage.outputTokens || 0);
-        return { name, total };
-      })
-      .sort((a, b) => b.total - a.total)
-      .map(
-        (m) =>
-          `<div class="model-row"><span class="model-name">${esc(m.name)}</span><span class="model-tokens">${formatTokens(m.total)}</span></div>`,
-      )
-      .join("\n      ");
-    content += `<div class="label" style="margin-top:.75rem">Model Usage (partial — install ccusage for full data)</div>
-      ${modelRows}`;
-  }
-
-  return `<div class="card full">
-  <h2>Activity</h2>
-  ${content}
-</div>`;
-})()}
-<details class="card full">
-  <summary style="cursor:pointer;list-style:none"><h2 style="margin:0">Quick Reference</h2></summary>
-  <div style="margin-top:.75rem">
-    <div class="ref-grid">
-      <div class="ref-col">
-        <div class="label">Essential Commands</div>
-        ${QUICK_REFERENCE.essentialCommands.map((c) => `<div class="ref-row"><code class="ref-cmd">${esc(c.cmd)}</code><span class="ref-desc">${esc(c.desc)}</span></div>`).join("\n        ")}
-      </div>
-      <div class="ref-col">
-        <div class="label">Built-in Tools</div>
-        ${QUICK_REFERENCE.tools.map((t) => `<div class="ref-row"><code class="ref-cmd">${esc(t.name)}</code><span class="ref-desc">${esc(t.desc)}</span></div>`).join("\n        ")}
-        <div class="label" style="margin-top:.75rem">Keyboard Shortcuts</div>
-        ${QUICK_REFERENCE.shortcuts.map((s) => `<div class="ref-row"><kbd class="ref-key">${esc(s.keys)}</kbd><span class="ref-desc">${esc(s.desc)}</span></div>`).join("\n        ")}
-      </div>
+<div class="tab-content active" id="tab-overview">
+  <div class="top-grid">
+    <div class="card" style="margin-bottom:0">
+      <h2>Global Commands <span class="n">${globalCmds.length}</span></h2>
+      ${globalCmds.map((c) => renderCmd(c)).join("\n  ")}
+    </div>
+    <div class="card" style="margin-bottom:0">
+      <h2>Global Rules <span class="n">${globalRules.length}</span></h2>
+      ${globalRules.map((r) => renderRule(r)).join("\n  ")}
     </div>
   </div>
-</details>
-${
-  chains.length
-    ? `<div class="card full">
-  <h2>Dependency Chains</h2>
-  ${chains.map((c) => `<div class="chain">${c.nodes.map((n, i) => `<span class="chain-node">${esc(n.trim())}</span>${i < c.nodes.length - 1 ? `<span class="chain-arrow">${c.arrow}</span>` : ""}`).join("")}</div>`).join("\n  ")}
-</div>`
-    : ""
-}
+  ${chainsHtml}
+  ${consolidationHtml}
 </div>
 
-${
-  consolidationGroups.length
-    ? `<div class="card full" style="margin-bottom:1.25rem">
-  <h2>Consolidation Opportunities <span class="n">${consolidationGroups.length}</span></h2>
-  ${consolidationGroups.map((g) => `<div class="consolidation-hint"><span class="consolidation-stack">${esc(g.stack)}</span> <span class="consolidation-text">${esc(g.suggestion)}</span></div>`).join("\n  ")}
-</div>`
-    : ""
-}
-
-<div class="search-bar">
-  <input type="text" id="search" placeholder="search repos..." autocomplete="off">
-  <span class="search-hint"><kbd>/</kbd></span>
-</div>
-<div class="group-controls">
-  <label class="group-label">Group by:</label>
-  <select id="group-by" class="group-select">
-    <option value="none">None</option>
-    <option value="stack">Tech Stack</option>
-    <option value="parent">Parent Directory</option>
-  </select>
+<div class="tab-content" id="tab-skills-mcp">
+  ${skillsHtml}
+  ${mcpHtml}
 </div>
 
-<div class="repo-grid" id="repo-grid">
-${configured.map((r) => renderRepoCard(r)).join("\n")}
-</div>
-
-${
-  unconfigured.length
-    ? `<details class="card" style="margin-bottom:1.25rem">
-  <summary style="cursor:pointer;list-style:none"><h2 style="margin:0">Unconfigured Repos <span class="n">${unconfiguredCount}</span></h2></summary>
-  <div style="margin-top:.75rem">
-    <div class="unconfigured-grid">
-      ${unconfigured
-        .map((r) => {
-          const stackTag =
-            r.techStack && r.techStack.length
-              ? `<span class="stack-tag">${esc(r.techStack.join(", "))}</span>`
-              : "";
-          const suggestionsHtml =
-            r.suggestions && r.suggestions.length
-              ? `<div class="suggestion-hints">${r.suggestions.map((s) => `<span class="suggestion-hint">${esc(s)}</span>`).join("")}</div>`
-              : "";
-          return `<div class="unconfigured-item">${esc(r.name)}${stackTag}<span class="upath">${esc(r.shortPath)}</span>${suggestionsHtml}</div>`;
-        })
-        .join("\n      ")}
-    </div>
+<div class="tab-content" id="tab-analytics">
+  <div class="top-grid">
+    ${toolsHtml ? toolsHtml.replace('class="card"', 'class="card" style="margin-bottom:0"') : ""}
+    ${langsHtml ? langsHtml.replace('class="card"', 'class="card" style="margin-bottom:0"') : ""}
   </div>
-</details>`
-    : ""
-}
+  ${errorsHtml}
+  ${activityHtml}
+</div>
+
+<div class="tab-content" id="tab-repos">
+  <div class="search-bar">
+    <input type="text" id="search" placeholder="search repos..." autocomplete="off">
+    <span class="search-hint"><kbd>/</kbd></span>
+  </div>
+  <div class="group-controls">
+    <label class="group-label">Group by:</label>
+    <select id="group-by" class="group-select">
+      <option value="none">None</option>
+      <option value="stack">Tech Stack</option>
+      <option value="parent">Parent Directory</option>
+    </select>
+  </div>
+  <div class="repo-grid" id="repo-grid">
+  ${configured.map((r) => renderRepoCard(r)).join("\n")}
+  </div>
+  ${unconfiguredHtml}
+</div>
+
+<div class="tab-content" id="tab-reference">
+  ${referenceHtml}
+</div>
 
 <div class="ts">found ${totalRepos} repos · ${configuredCount} configured · ${unconfiguredCount} unconfigured · scanned ${scanScope} · ${timestamp}</div>
 
 <script>
-const input = document.getElementById('search');
-const hint = document.querySelector('.search-hint');
+document.querySelectorAll('.tab-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+    document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+var input = document.getElementById('search');
+var hint = document.querySelector('.search-hint');
 
 input.addEventListener('input', function(e) {
-  const q = e.target.value.toLowerCase();
+  var q = e.target.value.toLowerCase();
   hint.style.display = q ? 'none' : '';
   document.querySelectorAll('.repo-card').forEach(function(card) {
-    const name = card.dataset.name.toLowerCase();
-    const path = (card.dataset.path || '').toLowerCase();
-    const text = card.textContent.toLowerCase();
+    var name = card.dataset.name.toLowerCase();
+    var path = (card.dataset.path || '').toLowerCase();
+    var text = card.textContent.toLowerCase();
     card.style.display = (q === '' || name.includes(q) || path.includes(q) || text.includes(q)) ? '' : 'none';
   });
 });
@@ -683,6 +736,11 @@ input.addEventListener('input', function(e) {
 document.addEventListener('keydown', function(e) {
   if (e.key === '/' && document.activeElement !== input) {
     e.preventDefault();
+    // Switch to repos tab first
+    document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+    document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+    document.querySelector('[data-tab="repos"]').classList.add('active');
+    document.getElementById('tab-repos').classList.add('active');
     input.focus();
   }
   if (e.key === 'Escape' && document.activeElement === input) {

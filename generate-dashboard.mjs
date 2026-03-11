@@ -20,7 +20,7 @@ import { execFileSync, execFile } from "child_process";
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from "fs";
 import { join, basename, dirname } from "path";
 
-import { VERSION, HOME, CLAUDE_DIR, DEFAULT_OUTPUT, CONF, MAX_DEPTH } from "./src/constants.mjs";
+import { VERSION, HOME, CLAUDE_DIR, DEFAULT_OUTPUT, CONF, MAX_DEPTH, REPO_URL } from "./src/constants.mjs";
 import { parseArgs, generateCompletions } from "./src/cli.mjs";
 import { shortPath } from "./src/helpers.mjs";
 import { anonymizeAll } from "./src/anonymize.mjs";
@@ -69,7 +69,15 @@ if (cliArgs.demo) {
   const outputPath = cliArgs.output;
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, html);
-  if (!cliArgs.quiet) console.log(outputPath);
+
+  if (!cliArgs.quiet) {
+    const sp = shortPath(outputPath);
+    console.log(`\n  claude-code-dashboard v${VERSION} (demo mode)\n`);
+    console.log(`  ✓ ${sp}`);
+    if (cliArgs.open) console.log(`  ✓ opening in browser`);
+    console.log(`\n  ${REPO_URL}`);
+    console.log();
+  }
 
   if (cliArgs.open) {
     const cmd =
@@ -185,7 +193,7 @@ for (const repo of configured) {
   const similar = configured
     .filter((r) => r !== repo)
     .map((r) => ({ name: r.name, similarity: computeConfigSimilarity(repo, r) }))
-    .filter((r) => r.similarity >= 40)
+    .filter((r) => r.similarity >= 25)
     .sort((a, b) => b.similarity - a.similarity)
     .slice(0, 2);
   repo.similarRepos = similar;
@@ -651,7 +659,17 @@ const html = generateDashboardHtml({
 const outputPath = cliArgs.output;
 mkdirSync(dirname(outputPath), { recursive: true });
 writeFileSync(outputPath, html);
-if (!cliArgs.quiet) console.log(outputPath);
+
+if (!cliArgs.quiet) {
+  const sp = shortPath(outputPath);
+  console.log(`\n  claude-code-dashboard v${VERSION}\n`);
+  console.log(`  ${configuredCount} configured · ${unconfiguredCount} unconfigured · ${totalRepos} repos`);
+  console.log(`  ${globalCmds.length} global commands · ${globalSkills.length} skills · ${mcpCount} MCP servers`);
+  console.log(`\n  ✓ ${sp}`);
+  if (cliArgs.open) console.log(`  ✓ opening in browser`);
+  console.log(`\n  ${REPO_URL}`);
+  console.log();
+}
 
 if (cliArgs.open) {
   const cmd =
