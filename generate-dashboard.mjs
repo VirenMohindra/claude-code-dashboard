@@ -220,13 +220,8 @@ function getScanRoots() {
 
 // ── Markdown Parsing ─────────────────────────────────────────────────────────
 
-function getDesc(filepath) {
-  let lines;
-  try {
-    lines = readFileSync(filepath, "utf8").split("\n");
-  } catch {
-    return "";
-  }
+function getDescFromContent(content) {
+  const lines = content.split("\n");
 
   // YAML frontmatter
   if (lines[0] === "---") {
@@ -247,6 +242,14 @@ function getDesc(filepath) {
     }
   }
   return "";
+}
+
+function getDesc(filepath) {
+  try {
+    return getDescFromContent(readFileSync(filepath, "utf8"));
+  } catch {
+    return "";
+  }
 }
 
 function extractProjectDesc(filepath) {
@@ -361,9 +364,9 @@ function scanMdDir(dir) {
 // ── Skill Source Detection ───────────────────────────────────────────────────
 
 const SKILL_CATEGORIES = {
-  workflow: ["plan", "workflow", "branch", "commit", "pr ", "review", "ship", "deploy", "execute"],
-  "code-quality": ["lint", "test", "quality", "format", "refactor", "clean", "verify", "tdd"],
-  debugging: ["debug", "fix", "error", "diagnose", "troubleshoot", "log", "ci-fix"],
+  workflow: ["plan", "workflow", "branch", "commit", "pr-", "review", "ship", "deploy", "execute"],
+  "code-quality": ["lint", "test-", "quality", "format", "refactor", "clean", "verify", "tdd"],
+  debugging: ["debug", "diagnose", "troubleshoot", "ci-fix", "stack-trace", "breakpoint"],
   research: [
     "research",
     "search",
@@ -376,7 +379,7 @@ const SKILL_CATEGORIES = {
     "find",
   ],
   integrations: ["slack", "github", "figma", "linear", "jira", "notion", "snowflake", "api", "mcp"],
-  "project-specific": ["pepper", "mneme", "detail", "storybook", "react-native", "blog"],
+  "project-specific": ["storybook", "react-native"],
 };
 
 const CATEGORY_ORDER = [
@@ -431,7 +434,8 @@ function detectSkillSource(skillName, skillsDir) {
   if (existsSync(join(skillsDir, ".git"))) {
     const remote = gitCmd(skillsDir, "remote", "get-url", "origin");
     if (remote) {
-      // Get list of skill directory names tracked in git under skills/
+      // obra/superpowers-skills convention: skills live under a skills/ directory in the repo.
+      // This may not match other skill repos with flat structures.
       const tracked = gitCmd(skillsDir, "ls-tree", "--name-only", "HEAD:skills/");
       if (tracked) {
         const trackedNames = new Set(tracked.split("\n").filter(Boolean));
@@ -485,7 +489,7 @@ function scanSkillsDir(dir) {
       } catch {
         /* unreadable */
       }
-      const desc = getDesc(skillFile);
+      const desc = getDescFromContent(content);
       const source = detectSkillSource(entry, dir);
       const category = categorizeSkill(entry, content);
       results.push({
@@ -562,7 +566,6 @@ const STACK_FILES = {
   "next.config.js": "next",
   "next.config.mjs": "next",
   "next.config.ts": "next",
-  "app.json": "expo", // Expo projects have app.json with expo key
   "Cargo.toml": "rust",
   "go.mod": "go",
   "requirements.txt": "python",
@@ -619,7 +622,12 @@ function computeDrift(repoDir, configTimestamp) {
 
   // Count commits since the config was last updated
   const countStr = gitCmd(repoDir, "rev-list", "--count", `--since=${configTimestamp}`, "HEAD");
-  const commitsSince = Math.max(0, Number(countStr) - 1); // -1 to exclude the config commit itself
+  if (!countStr) return { level: "unknown", commitsSince: 0 };
+
+  const parsed = Number(countStr);
+  if (!Number.isFinite(parsed)) return { level: "unknown", commitsSince: 0 };
+
+  const commitsSince = Math.max(0, parsed - 1); // -1 to exclude the config commit itself
 
   if (commitsSince === 0) return { level: "synced", commitsSince: 0 };
   if (commitsSince <= 5) return { level: "low", commitsSince };
@@ -781,6 +789,83 @@ const driftCount = configured.filter(
   (r) => r.drift && (r.drift.level === "medium" || r.drift.level === "high"),
 ).length;
 
+const now = new Date();
+const timestamp =
+  now
+    .toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    .toLowerCase() +
+  " at " +
+  now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).toLowerCase();
+
+const scanScope = existsSync(CONF) ? `config: ${shortPath(CONF)}` : "~/ (depth 5)";
+
+// ── JSON Output (short-circuit before HTML generation) ──────────────────────
+
+if (cliArgs.json) {
+  const jsonData = {
+    version: VERSION,
+    generatedAt: now.toISOString(),
+    scanScope,
+    stats: {
+      totalRepos,
+      configuredRepos: configuredCount,
+      unconfiguredRepos: unconfiguredCount,
+      coveragePct,
+      globalCommands: globalCmds.length,
+      globalRules: globalRules.length,
+      skills: globalSkills.length,
+      repoCommands: totalRepoCmds,
+      avgHealthScore: avgHealth,
+      driftingRepos: driftCount,
+    },
+    globalCommands: globalCmds.map((c) => ({ name: c.name, description: c.desc })),
+    globalRules: globalRules.map((r) => ({ name: r.name, description: r.desc })),
+    skills: globalSkills.map((s) => ({
+      name: s.name,
+      description: s.desc,
+      source: s.source,
+      category: s.category,
+    })),
+    chains: chains.map((c) => ({
+      nodes: c.nodes.map((n) => n.trim()),
+      direction: c.arrow === "&rarr;" ? "forward" : "backward",
+    })),
+    configuredRepos: configured.map((r) => ({
+      name: r.name,
+      path: r.shortPath,
+      commands: r.commands.map((c) => ({ name: c.name, description: c.desc })),
+      rules: r.rules.map((ru) => ({ name: ru.name, description: ru.desc })),
+      sections: r.sections.map((s) => s.name),
+      description: r.desc,
+      techStack: r.techStack || [],
+      healthScore: r.healthScore || 0,
+      healthReasons: r.healthReasons || [],
+      freshness: {
+        timestamp: r.freshness,
+        relative: r.freshnessText,
+        class: r.freshnessClass,
+      },
+      drift: r.drift || { level: "unknown", commitsSince: 0 },
+    })),
+    unconfiguredRepos: unconfigured.map((r) => ({
+      name: r.name,
+      path: r.shortPath,
+      techStack: r.techStack || [],
+    })),
+  };
+
+  const jsonOutput = JSON.stringify(jsonData, null, 2);
+
+  if (cliArgs.output !== DEFAULT_OUTPUT) {
+    mkdirSync(dirname(cliArgs.output), { recursive: true });
+    writeFileSync(cliArgs.output, jsonOutput);
+    console.log(cliArgs.output);
+  } else {
+    process.stdout.write(jsonOutput + "\n");
+  }
+  process.exit(0);
+}
+
 // ── HTML Rendering ───────────────────────────────────────────────────────────
 
 function renderSections(sections) {
@@ -875,14 +960,16 @@ function healthScoreColor(score) {
 
 function renderHealthBar(repo) {
   if (repo.healthScore === undefined) return "";
-  const color = healthScoreColor(repo.healthScore);
-  return `<div class="health-bar"><div class="health-fill" style="width:${repo.healthScore}%;background:${color}"></div><span class="health-label">${repo.healthScore}</span></div>`;
+  const s = Math.max(0, Math.min(100, repo.healthScore || 0));
+  const color = healthScoreColor(s);
+  return `<div class="health-bar"><div class="health-fill" style="width:${s}%;background:${color}"></div><span class="health-label">${s}</span></div>`;
 }
 
 function renderDriftIndicator(repo) {
   if (!repo.drift || repo.drift.level === "unknown" || repo.drift.level === "synced") return "";
-  const cls = `drift-${repo.drift.level}`;
-  return `<span class="drift ${cls}" title="${repo.drift.commitsSince} commits since config update">${repo.drift.commitsSince}&#8203;&#916;</span>`;
+  const cls = `drift-${esc(repo.drift.level)}`;
+  const n = Number(repo.drift.commitsSince) || 0;
+  return `<span class="drift ${cls}" title="${n} commits since config update">${n}&#8203;&#916;</span>`;
 }
 
 function renderRepoCard(repo) {
@@ -932,16 +1019,6 @@ function renderRepoCard(repo) {
   <div class="repo-body">${body}</div>
 </details>`;
 }
-
-const now = new Date();
-const timestamp =
-  now
-    .toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-    .toLowerCase() +
-  " at " +
-  now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).toLowerCase();
-
-const scanScope = existsSync(CONF) ? `config: ${shortPath(CONF)}` : "~/ (depth 5)";
 
 const html = `<!DOCTYPE html>
 <html lang="en">
@@ -1206,74 +1283,6 @@ document.addEventListener('keydown', function(e) {
 </script>
 </body>
 </html>`;
-
-// ── JSON Output ─────────────────────────────────────────────────────────────
-
-if (cliArgs.json) {
-  const jsonData = {
-    version: VERSION,
-    generatedAt: now.toISOString(),
-    scanScope,
-    stats: {
-      totalRepos,
-      configuredRepos: configuredCount,
-      unconfiguredRepos: unconfiguredCount,
-      coveragePct,
-      globalCommands: globalCmds.length,
-      globalRules: globalRules.length,
-      skills: globalSkills.length,
-      repoCommands: totalRepoCmds,
-      avgHealthScore: avgHealth,
-      driftingRepos: driftCount,
-    },
-    globalCommands: globalCmds.map((c) => ({ name: c.name, description: c.desc })),
-    globalRules: globalRules.map((r) => ({ name: r.name, description: r.desc })),
-    skills: globalSkills.map((s) => ({
-      name: s.name,
-      description: s.desc,
-      source: s.source,
-      category: s.category,
-    })),
-    chains: chains.map((c) => ({
-      nodes: c.nodes.map((n) => n.trim()),
-      direction: c.arrow === "&rarr;" ? "forward" : "backward",
-    })),
-    configuredRepos: configured.map((r) => ({
-      name: r.name,
-      path: r.shortPath,
-      commands: r.commands.map((c) => ({ name: c.name, description: c.desc })),
-      rules: r.rules.map((ru) => ({ name: ru.name, description: ru.desc })),
-      sections: r.sections.map((s) => s.name),
-      description: r.desc,
-      techStack: r.techStack || [],
-      healthScore: r.healthScore || 0,
-      healthReasons: r.healthReasons || [],
-      freshness: {
-        timestamp: r.freshness,
-        relative: r.freshnessText,
-        class: r.freshnessClass,
-      },
-      drift: r.drift || { level: "unknown", commitsSince: 0 },
-    })),
-    unconfiguredRepos: unconfigured.map((r) => ({
-      name: r.name,
-      path: r.shortPath,
-      techStack: r.techStack || [],
-    })),
-  };
-
-  const jsonOutput = JSON.stringify(jsonData, null, 2);
-
-  if (cliArgs.output !== DEFAULT_OUTPUT) {
-    mkdirSync(dirname(cliArgs.output), { recursive: true });
-    writeFileSync(cliArgs.output, jsonOutput);
-    console.log(cliArgs.output);
-  } else {
-    // Default: write to stdout for piping
-    process.stdout.write(jsonOutput + "\n");
-  }
-  process.exit(0);
-}
 
 // ── Write HTML Output ───────────────────────────────────────────────────────
 
