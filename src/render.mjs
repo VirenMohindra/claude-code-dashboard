@@ -1,6 +1,5 @@
 import { esc } from "./helpers.mjs";
 import { extractSteps, extractSections } from "./markdown.mjs";
-import { groupSkillsByCategory } from "./skills.mjs";
 
 export function renderSections(sections) {
   return sections
@@ -57,9 +56,6 @@ export function renderSkill(skill) {
   }
   return `<div class="cmd-row"><span class="cmd-name skill-name">${esc(skill.name)}</span>${badge}<span class="cmd-desc">${d}</span></div>`;
 }
-
-// Re-export from skills.mjs (single source of truth)
-export { groupSkillsByCategory };
 
 export function renderBadges(repo) {
   const b = [];

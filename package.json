@@ -8,7 +8,7 @@
   },
   "scripts": {
     "generate": "node generate-dashboard.mjs",
-    "test": "node --test test/helpers.test.mjs",
+    "test": "node --test test/*.test.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -33,7 +33,8 @@
   },
   "files": [
     "generate-dashboard.mjs",
-    "src/"
+    "src/",
+    "template/"
   ],
   "devDependencies": {
     "eslint": "^9.0.0",

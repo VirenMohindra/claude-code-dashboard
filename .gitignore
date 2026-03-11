@@ -1,4 +1,4 @@
 node_modules/
-dashboard.html
+/dashboard.html
 .DS_Store
 *.log

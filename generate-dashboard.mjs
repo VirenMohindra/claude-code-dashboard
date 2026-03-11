@@ -60,7 +60,7 @@ import {
 import { aggregateSessionMeta } from "./src/usage.mjs";
 import { handleInit } from "./src/templates.mjs";
 import { generateCatalogHtml } from "./src/render.mjs";
-import { generateDashboardHtml } from "./src/html-template.mjs";
+import { generateDashboardHtml } from "./src/assembler.mjs";
 import { startWatch } from "./src/watch.mjs";
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
