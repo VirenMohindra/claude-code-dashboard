@@ -22,7 +22,9 @@ import { join, basename, dirname } from "path";
 
 import { VERSION, HOME, CLAUDE_DIR, DEFAULT_OUTPUT, CONF, MAX_DEPTH } from "./src/constants.mjs";
 import { parseArgs, generateCompletions } from "./src/cli.mjs";
-import { shortPath, anonymizePath } from "./src/helpers.mjs";
+import { shortPath } from "./src/helpers.mjs";
+import { anonymizeAll } from "./src/anonymize.mjs";
+import { generateDemoData } from "./src/demo.mjs";
 import { findGitRepos, getScanRoots } from "./src/discovery.mjs";
 import { extractProjectDesc, extractSections, scanMdDir } from "./src/markdown.mjs";
 import { scanSkillsDir, groupSkillsByCategory } from "./src/skills.mjs";
@@ -57,6 +59,25 @@ const cliArgs = parseArgs(process.argv);
 
 if (cliArgs.completions) generateCompletions();
 if (cliArgs.command === "init") handleInit(cliArgs);
+
+// ── Demo Mode ────────────────────────────────────────────────────────────────
+
+if (cliArgs.demo) {
+  const demoData = generateDemoData();
+  const html = generateDashboardHtml(demoData);
+
+  const outputPath = cliArgs.output;
+  mkdirSync(dirname(outputPath), { recursive: true });
+  writeFileSync(outputPath, html);
+  if (!cliArgs.quiet) console.log(outputPath);
+
+  if (cliArgs.open) {
+    const cmd =
+      process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+    execFile(cmd, [outputPath]);
+  }
+  process.exit(0);
+}
 
 // ── Collect Everything ───────────────────────────────────────────────────────
 
@@ -479,10 +500,18 @@ if (cliArgs.diff) {
 // ── Anonymize ────────────────────────────────────────────────────────────────
 
 if (cliArgs.anonymize) {
-  for (const repo of [...configured, ...unconfigured]) {
-    repo.shortPath = anonymizePath(repo.shortPath);
-    repo.path = anonymizePath(repo.path);
-  }
+  anonymizeAll({
+    configured,
+    unconfigured,
+    globalCmds,
+    globalRules,
+    globalSkills,
+    chains,
+    mcpSummary,
+    mcpPromotions,
+    formerMcpServers,
+    consolidationGroups,
+  });
 }
 
 // ── JSON Output ──────────────────────────────────────────────────────────────

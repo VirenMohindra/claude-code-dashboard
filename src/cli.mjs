@@ -13,6 +13,7 @@ export function parseArgs(argv) {
     watch: false,
     diff: false,
     anonymize: false,
+    demo: false,
     completions: false,
   };
   let i = 2; // skip node + script
@@ -43,7 +44,8 @@ Options:
   --quiet              Suppress output, just write file
   --watch              Regenerate on file changes
   --diff               Show changes since last generation
-  --anonymize          Anonymize paths for shareable export
+  --anonymize          Anonymize all data for shareable export
+  --demo               Generate dashboard with sample data (no scanning)
   --completions        Output shell completion script for bash/zsh
   --version, -v        Show version
   --help, -h           Show this help
@@ -107,6 +109,9 @@ Config file: ~/.claude/dashboard.conf
       case "--anonymize":
         args.anonymize = true;
         break;
+      case "--demo":
+        args.demo = true;
+        break;
       case "--completions":
         args.completions = true;
         break;
@@ -124,11 +129,11 @@ export function generateCompletions() {
 # eval "$(claude-code-dashboard --completions)"
 if [ -n "$ZSH_VERSION" ]; then
   _claude_code_dashboard() {
-    local -a opts; opts=(init lint --output --open --json --catalog --quiet --watch --diff --anonymize --completions --help --version)
+    local -a opts; opts=(init lint --output --open --json --catalog --quiet --watch --diff --anonymize --demo --completions --help --version)
     if (( CURRENT == 2 )); then _describe 'option' opts; fi
   }; compdef _claude_code_dashboard claude-code-dashboard
 elif [ -n "$BASH_VERSION" ]; then
-  _claude_code_dashboard() { COMPREPLY=( $(compgen -W "init lint --output --open --json --catalog --quiet --watch --diff --anonymize --completions --help --version" -- "\${COMP_WORDS[COMP_CWORD]}") ); }
+  _claude_code_dashboard() { COMPREPLY=( $(compgen -W "init lint --output --open --json --catalog --quiet --watch --diff --anonymize --demo --completions --help --version" -- "\${COMP_WORDS[COMP_CWORD]}") ); }
   complete -F _claude_code_dashboard claude-code-dashboard
 fi`);
   process.exit(0);

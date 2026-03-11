@@ -4,6 +4,34 @@ A visual dashboard for your [Claude Code](https://docs.anthropic.com/en/docs/cla
 
 Scans your home directory for git repos, collects Claude Code configuration (commands, rules, skills, MCP servers, usage data), and generates a self-contained HTML dashboard.
 
+## Screenshots
+
+### Dashboard overview — stats, global commands, and rules
+
+![Overview](screenshots/01-overview.png)
+
+### Skills with auto-categorization and MCP server discovery
+
+![Skills and MCP](screenshots/02-skills-mcp.png)
+
+### Usage analytics — tool usage, languages, activity heatmap
+
+![Usage Analytics](screenshots/03-usage-analytics.png)
+
+### Repo cards with search, grouping, and consolidation hints
+
+![Repo Cards](screenshots/04-repo-cards.png)
+
+### Expanded repo — commands, rules, health score, matched skills
+
+![Repo Expanded](screenshots/05-repo-expanded.png)
+
+### Dark mode
+
+![Dark Mode](screenshots/06-light-mode.png)
+
+> Screenshots generated with `claude-code-dashboard --demo`
+
 ## Features
 
 ### Core
