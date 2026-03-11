@@ -17,13 +17,22 @@
  */
 
 import { execFileSync, execFile } from "child_process";
-import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSync } from "fs";
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  readdirSync,
+  statSync,
+  mkdirSync,
+  lstatSync,
+  readlinkSync,
+} from "fs";
 import { join, basename, dirname } from "path";
 import { homedir } from "os";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 
 const HOME = homedir();
 const CLAUDE_DIR = join(HOME, ".claude");
@@ -85,7 +94,7 @@ const BOILERPLATE_RE = new RegExp(BOILERPLATE_PATTERNS.join("|"));
 // ── CLI Argument Parsing ─────────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const args = { output: DEFAULT_OUTPUT, open: false };
+  const args = { output: DEFAULT_OUTPUT, open: false, json: false };
   let i = 2; // skip node + script
   while (i < argv.length) {
     switch (argv[i]) {
@@ -101,6 +110,7 @@ Usage:
 
 Options:
   --output, -o <path>  Output path (default: ~/.claude/dashboard.html)
+  --json               Output full data model as JSON instead of HTML
   --open               Open the dashboard in your default browser after generating
   --version, -v        Show version
   --help, -h           Show this help
@@ -125,6 +135,9 @@ Config file: ~/.claude/dashboard.conf
         if (args.output.startsWith("~")) {
           args.output = args.output.replace(/^~/, HOME);
         }
+        break;
+      case "--json":
+        args.json = true;
         break;
       case "--open":
         args.open = true;
@@ -345,6 +358,119 @@ function scanMdDir(dir) {
   return results.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// ── Skill Source Detection ───────────────────────────────────────────────────
+
+const SKILL_CATEGORIES = {
+  workflow: ["plan", "workflow", "branch", "commit", "pr ", "review", "ship", "deploy", "execute"],
+  "code-quality": ["lint", "test", "quality", "format", "refactor", "clean", "verify", "tdd"],
+  debugging: ["debug", "fix", "error", "diagnose", "troubleshoot", "log", "ci-fix"],
+  research: [
+    "research",
+    "search",
+    "analyze",
+    "explore",
+    "investigate",
+    "compare",
+    "competitive",
+    "audit",
+    "find",
+  ],
+  integrations: ["slack", "github", "figma", "linear", "jira", "notion", "snowflake", "api", "mcp"],
+  "project-specific": ["pepper", "mneme", "detail", "storybook", "react-native", "blog"],
+};
+
+const CATEGORY_ORDER = [
+  "workflow",
+  "code-quality",
+  "debugging",
+  "research",
+  "integrations",
+  "project-specific",
+];
+
+/**
+ * Detect where a skill was sourced from:
+ * - "superpowers" — tracked in the obra/superpowers-skills git repo
+ * - "skills.sh" — installed via skills.sh, symlinked from ~/.agents/skills/
+ * - "custom" — user-created, not tracked by any known source
+ */
+function detectSkillSource(skillName, skillsDir) {
+  const skillPath = join(skillsDir, skillName);
+
+  // 1. Check if it's a symlink → skills.sh
+  try {
+    const stat = lstatSync(skillPath);
+    if (stat.isSymbolicLink()) {
+      const target = readlinkSync(skillPath);
+      if (target.includes(".agents/skills") || target.includes(".agents\\skills")) {
+        // Try to read source info from skill-lock.json
+        const lockPath = join(HOME, ".agents", ".skill-lock.json");
+        if (existsSync(lockPath)) {
+          try {
+            const lock = JSON.parse(readFileSync(lockPath, "utf8"));
+            const entry = lock.skills?.[skillName];
+            if (entry) {
+              return {
+                type: "skills.sh",
+                repo: entry.source || "",
+                url: (entry.sourceUrl || "").replace(/\.git$/, ""),
+              };
+            }
+          } catch {
+            /* malformed JSON */
+          }
+        }
+        return { type: "skills.sh" };
+      }
+    }
+  } catch {
+    /* not a symlink or unreadable */
+  }
+
+  // 2. Check if it comes from the git repo (e.g. obra/superpowers-skills)
+  if (existsSync(join(skillsDir, ".git"))) {
+    const remote = gitCmd(skillsDir, "remote", "get-url", "origin");
+    if (remote) {
+      // Get list of skill directory names tracked in git under skills/
+      const tracked = gitCmd(skillsDir, "ls-tree", "--name-only", "HEAD:skills/");
+      if (tracked) {
+        const trackedNames = new Set(tracked.split("\n").filter(Boolean));
+        if (trackedNames.has(skillName)) {
+          const repoSlug = remote.replace(/\.git$/, "").replace(/^https?:\/\/github\.com\//, "");
+          return {
+            type: "superpowers",
+            repo: repoSlug,
+            url: remote.replace(/\.git$/, ""),
+          };
+        }
+      }
+    }
+  }
+
+  // 3. Fallback: custom
+  return { type: "custom" };
+}
+
+/** Categorize a skill based on its name and description content. */
+function categorizeSkill(name, content) {
+  const nameLower = name.toLowerCase();
+  const contentLower = content.toLowerCase();
+  let bestCategory = "workflow";
+  let bestScore = 0;
+
+  for (const [category, keywords] of Object.entries(SKILL_CATEGORIES)) {
+    // Name matches get 3x weight since the name is the strongest signal
+    const nameScore = keywords.reduce((sum, kw) => sum + (nameLower.includes(kw) ? 3 : 0), 0);
+    const contentScore = keywords.reduce((sum, kw) => sum + (contentLower.includes(kw) ? 1 : 0), 0);
+    const score = nameScore + contentScore;
+    if (score > bestScore) {
+      bestScore = score;
+      bestCategory = category;
+    }
+  }
+  return bestCategory;
+}
+
 /** Scan ~/.claude/skills/ — each subdirectory with a SKILL.md is a skill. */
 function scanSkillsDir(dir) {
   if (!existsSync(dir)) return [];
@@ -353,8 +479,22 @@ function scanSkillsDir(dir) {
     for (const entry of readdirSync(dir)) {
       const skillFile = join(dir, entry, "SKILL.md");
       if (!existsSync(skillFile)) continue;
+      let content = "";
+      try {
+        content = readFileSync(skillFile, "utf8");
+      } catch {
+        /* unreadable */
+      }
       const desc = getDesc(skillFile);
-      results.push({ name: entry, desc: desc || "No description", filepath: skillFile });
+      const source = detectSkillSource(entry, dir);
+      const category = categorizeSkill(entry, content);
+      results.push({
+        name: entry,
+        desc: desc || "No description",
+        filepath: skillFile,
+        source,
+        category,
+      });
     }
   } catch {
     /* directory unreadable */
@@ -520,13 +660,45 @@ function renderRule(rule) {
   return `<div class="cmd-row"><span class="cmd-name">${esc(rule.name)}</span><span class="cmd-desc">${d}</span></div>`;
 }
 
+function sourceBadgeHtml(source) {
+  if (!source) return "";
+  switch (source.type) {
+    case "superpowers":
+      return `<span class="badge source superpowers">superpowers</span>`;
+    case "skills.sh": {
+      const label = source.repo ? `skills.sh &middot; ${esc(source.repo)}` : "skills.sh";
+      return `<span class="badge source skillssh">${label}</span>`;
+    }
+    default:
+      return `<span class="badge source custom">custom</span>`;
+  }
+}
+
 function renderSkill(skill) {
   const sections = extractSections(skill.filepath);
   const d = esc(skill.desc);
+  const badge = sourceBadgeHtml(skill.source);
   if (sections.length) {
-    return `<details class="cmd-detail"><summary><span class="cmd-name skill-name">${esc(skill.name)}</span><span class="cmd-desc">${d}</span></summary><div class="detail-body">${renderSections(sections)}</div></details>`;
+    return `<details class="cmd-detail"><summary><span class="cmd-name skill-name">${esc(skill.name)}</span>${badge}<span class="cmd-desc">${d}</span></summary><div class="detail-body">${renderSections(sections)}</div></details>`;
   }
-  return `<div class="cmd-row"><span class="cmd-name skill-name">${esc(skill.name)}</span><span class="cmd-desc">${d}</span></div>`;
+  return `<div class="cmd-row"><span class="cmd-name skill-name">${esc(skill.name)}</span>${badge}<span class="cmd-desc">${d}</span></div>`;
+}
+
+function groupSkillsByCategory(skills) {
+  const groups = {};
+  for (const cat of CATEGORY_ORDER) {
+    groups[cat] = [];
+  }
+  for (const skill of skills) {
+    const cat = skill.category || "workflow";
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(skill);
+  }
+  // Remove empty categories
+  for (const cat of Object.keys(groups)) {
+    if (groups[cat].length === 0) delete groups[cat];
+  }
+  return groups;
 }
 
 function renderBadges(repo) {
@@ -705,7 +877,15 @@ const html = `<!DOCTYPE html>
   .badge.rules { color: var(--purple); border-color: #a78bfa33; background: #a78bfa10; }
   .badge.agent { color: var(--blue); border-color: #60a5fa33; background: #60a5fa10; }
   .badge.skills { color: var(--yellow); border-color: #fbbf2433; background: #fbbf2410; }
+  .badge.source { font-size: .5rem; padding: .08rem .3rem; margin-left: .4rem; text-transform: none; letter-spacing: .02em; flex-shrink: 0; }
+  .badge.source.superpowers { color: var(--purple); border-color: #a78bfa33; background: #a78bfa10; }
+  .badge.source.skillssh { color: var(--blue); border-color: #60a5fa33; background: #60a5fa10; }
+  .badge.source.custom { color: var(--text-dim); border-color: var(--border); background: var(--surface2); }
   .skill-name { color: var(--yellow) !important; }
+  .skill-category { margin-top: .75rem; }
+  .skill-category:first-child { margin-top: 0; }
+  .skill-category-label { font-size: .6rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); padding: .3rem 0; margin-bottom: .25rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: .4rem; }
+  .skill-category-label .cat-n { font-size: .55rem; color: var(--accent-dim); }
 
   .freshness-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; }
   .freshness-dot.fresh { background: var(--green); }
@@ -752,10 +932,19 @@ const html = `<!DOCTYPE html>
 </div>
 ${
   globalSkills.length
-    ? `<div class="card full">
+    ? (() => {
+        const groups = groupSkillsByCategory(globalSkills);
+        const categoryHtml = Object.entries(groups)
+          .map(
+            ([cat, skills]) =>
+              `<div class="skill-category"><div class="skill-category-label">${esc(cat)} <span class="cat-n">${skills.length}</span></div>${skills.map((s) => renderSkill(s)).join("\n    ")}</div>`,
+          )
+          .join("\n  ");
+        return `<div class="card full">
   <h2>Skills <span class="n">${globalSkills.length}</span></h2>
-  ${globalSkills.map((s) => renderSkill(s)).join("\n  ")}
-</div>`
+  ${categoryHtml}
+</div>`;
+      })()
     : ""
 }
 ${
@@ -822,7 +1011,68 @@ document.addEventListener('keydown', function(e) {
 </body>
 </html>`;
 
-// ── Write Output ─────────────────────────────────────────────────────────────
+// ── JSON Output ─────────────────────────────────────────────────────────────
+
+if (cliArgs.json) {
+  const jsonData = {
+    version: VERSION,
+    generatedAt: now.toISOString(),
+    scanScope,
+    stats: {
+      totalRepos,
+      configuredRepos: configuredCount,
+      unconfiguredRepos: unconfiguredCount,
+      coveragePct,
+      globalCommands: globalCmds.length,
+      globalRules: globalRules.length,
+      skills: globalSkills.length,
+      repoCommands: totalRepoCmds,
+    },
+    globalCommands: globalCmds.map((c) => ({ name: c.name, description: c.desc })),
+    globalRules: globalRules.map((r) => ({ name: r.name, description: r.desc })),
+    skills: globalSkills.map((s) => ({
+      name: s.name,
+      description: s.desc,
+      source: s.source,
+      category: s.category,
+    })),
+    chains: chains.map((c) => ({
+      nodes: c.nodes.map((n) => n.trim()),
+      direction: c.arrow === "&rarr;" ? "forward" : "backward",
+    })),
+    configuredRepos: configured.map((r) => ({
+      name: r.name,
+      path: r.shortPath,
+      commands: r.commands.map((c) => ({ name: c.name, description: c.desc })),
+      rules: r.rules.map((ru) => ({ name: ru.name, description: ru.desc })),
+      sections: r.sections.map((s) => s.name),
+      description: r.desc,
+      freshness: {
+        timestamp: r.freshness,
+        relative: r.freshnessText,
+        class: r.freshnessClass,
+      },
+    })),
+    unconfiguredRepos: unconfigured.map((r) => ({
+      name: r.name,
+      path: r.shortPath,
+    })),
+  };
+
+  const jsonOutput = JSON.stringify(jsonData, null, 2);
+
+  if (cliArgs.output !== DEFAULT_OUTPUT) {
+    mkdirSync(dirname(cliArgs.output), { recursive: true });
+    writeFileSync(cliArgs.output, jsonOutput);
+    console.log(cliArgs.output);
+  } else {
+    // Default: write to stdout for piping
+    process.stdout.write(jsonOutput + "\n");
+  }
+  process.exit(0);
+}
+
+// ── Write HTML Output ───────────────────────────────────────────────────────
 
 const outputPath = cliArgs.output;
 mkdirSync(dirname(outputPath), { recursive: true });

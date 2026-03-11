@@ -9,24 +9,24 @@
 - [x] CI/CD: GitHub Actions (lint, test matrix, dry run)
 - [x] Skills support: scan `~/.claude/skills/` for `SKILL.md`
 
-## v0.2.0 — Intelligence Layer
+## v0.2.0 — Intelligence Layer (complete)
 
 ### Skill Sourcing & Shareability
 
-- [ ] Detect skill source: git remote (e.g. `obra/superpowers-skills`), symlink to `.agents/skills/` (skills.sh), or local/custom
-- [ ] Show source badge per skill ("superpowers", "skills.sh", "custom")
-- [ ] Link to source repo/URL where possible (GitHub link for git-sourced, skills.sh link for installed)
+- [x] Detect skill source: git remote (e.g. `obra/superpowers-skills`), symlink to `.agents/skills/` (skills.sh), or local/custom
+- [x] Show source badge per skill ("superpowers", "skills.sh", "custom")
+- [x] Link to source repo/URL where possible (GitHub link for git-sourced, skills.sh link for installed)
 - [ ] Generate shareable skill catalog page (`--catalog` flag) with install instructions
 
 ### Skill Grouping & Categorization
 
-- [ ] Auto-categorize skills by keywords in SKILL.md (workflow, code-quality, research, integrations, project-specific)
-- [ ] Group skills by category in the dashboard instead of flat alphabetical list
-- [ ] Visual category indicators (icon or color per category)
+- [x] Auto-categorize skills by keywords in SKILL.md (workflow, code-quality, debugging, research, integrations, project-specific)
+- [x] Group skills by category in the dashboard instead of flat alphabetical list
+- [x] Visual category indicators (color per category + count badges)
 
 ### Data Export
 
-- [ ] `--json` flag: dump full data model (repos, commands, rules, skills, chains, stats) as JSON
+- [x] `--json` flag: dump full data model (repos, commands, rules, skills, chains, stats) as JSON
 - [ ] Enables downstream tooling: VS Code extensions, web dashboards, CI integrations, team reports
 
 ## v0.3.0 — Recommendations Engine
