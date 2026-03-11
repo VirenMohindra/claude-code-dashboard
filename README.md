@@ -7,6 +7,8 @@
 
 A visual dashboard for your [Claude Code](https://docs.anthropic.com/en/docs/claude-code) configuration across all repos.
 
+**[Live Demo](https://virenmohindra.me/claude-code-dashboard/)**
+
 Scans your home directory for git repos, collects Claude Code configuration (commands, rules, skills, MCP servers, usage data), and generates a self-contained HTML dashboard.
 
 ## Screenshots
