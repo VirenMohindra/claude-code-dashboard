@@ -515,10 +515,10 @@ export function generateDemoData() {
       },
     ],
     insightsReport: {
-      subtitle: "1,386 messages across 117 sessions (365 total) | 2026-02-23 to 2026-03-10",
+      subtitle: "1,386 messages across 117 sessions (365 total) | Feb 23, 2026 to Mar 10, 2026",
       stats: [
         { value: "1,386", label: "Messages" },
-        { value: "+33,424/-2,563", label: "Lines" },
+        { value: "+33,424/-2,563", label: "Lines", isDiff: true },
         { value: "632", label: "Files" },
         { value: "14", label: "Days" },
         { value: "99", label: "Msgs/Day" },
