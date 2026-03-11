@@ -1,0 +1,92 @@
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { generateDashboardHtml } from "../src/assembler.mjs";
+import { generateDemoData } from "../src/demo.mjs";
+
+describe("generateDashboardHtml (assembler)", () => {
+  const data = generateDemoData();
+
+  it("produces valid HTML document", () => {
+    const html = generateDashboardHtml(data);
+    assert.ok(html.startsWith("<!DOCTYPE html>"));
+    assert.ok(html.includes("</html>"));
+  });
+
+  it("contains no unresolved placeholders", () => {
+    const html = generateDashboardHtml(data);
+    const remaining = html.match(/<!-- \{\{[A-Z_]+\}\} -->/g);
+    assert.equal(remaining, null, `Unresolved placeholders: ${remaining}`);
+  });
+
+  it("includes all tab sections", () => {
+    const html = generateDashboardHtml(data);
+    assert.ok(html.includes('id="tab-overview"'));
+    assert.ok(html.includes('id="tab-skills-mcp"'));
+    assert.ok(html.includes('id="tab-analytics"'));
+    assert.ok(html.includes('id="tab-repos"'));
+    assert.ok(html.includes('id="tab-reference"'));
+  });
+
+  it("includes CSS and JS", () => {
+    const html = generateDashboardHtml(data);
+    assert.ok(html.includes("<style>"));
+    assert.ok(html.includes("</style>"));
+    assert.ok(html.includes("<script>"));
+    assert.ok(html.includes("function switchTab"));
+  });
+
+  it("includes stats bar with demo data", () => {
+    const html = generateDashboardHtml(data);
+    assert.ok(html.includes("Coverage"));
+    assert.ok(html.includes("Avg Health"));
+    assert.ok(html.includes("Global Commands"));
+  });
+
+  it("includes section IDs for scroll targets", () => {
+    const html = generateDashboardHtml(data);
+    assert.ok(html.includes('id="section-skills"'));
+    assert.ok(html.includes('id="section-mcp"'));
+    assert.ok(html.includes('id="section-commands"'));
+    assert.ok(html.includes('id="section-activity"'));
+  });
+
+  it("handles empty data gracefully", () => {
+    const emptyData = {
+      configured: [],
+      unconfigured: [],
+      globalCmds: [],
+      globalRules: [],
+      globalSkills: [],
+      chains: [],
+      mcpSummary: [],
+      mcpPromotions: [],
+      formerMcpServers: [],
+      consolidationGroups: [],
+      usageAnalytics: {
+        topTools: [],
+        topLanguages: [],
+        errorCategories: [],
+        heavySessions: 0,
+      },
+      ccusageData: null,
+      statsCache: {},
+      timestamp: "test",
+      coveragePct: 0,
+      totalRepos: 0,
+      configuredCount: 0,
+      unconfiguredCount: 0,
+      totalRepoCmds: 0,
+      avgHealth: 0,
+      driftCount: 0,
+      mcpCount: 0,
+      scanScope: "test",
+      insights: [],
+      insightsReport: null,
+    };
+    const html = generateDashboardHtml(emptyData);
+    assert.ok(html.includes("<!DOCTYPE html>"));
+    assert.ok(html.includes("</html>"));
+    // No unresolved placeholders
+    assert.equal(html.match(/<!-- \{\{[A-Z_]+\}\} -->/g), null);
+  });
+});
