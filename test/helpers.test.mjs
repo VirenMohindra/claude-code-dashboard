@@ -455,6 +455,12 @@ describe("parseArgs()", () => {
     assert.equal(args.template, "next");
   });
 
+  it("returns undefined template when --template has no value", () => {
+    const args = parseArgs(["node", "script", "init", "--template"]);
+    assert.equal(args.command, "init");
+    assert.equal(args.template, undefined);
+  });
+
   it("defaults command to null", () => {
     const args = parseArgs(["node", "script"]);
     assert.equal(args.command, null);

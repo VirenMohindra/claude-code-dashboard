@@ -323,7 +323,10 @@ function generateTemplate(stack, exemplar, pattern) {
   lines.push("");
   lines.push("- [ ] All tests passing");
   lines.push("- [ ] Linter clean");
-  lines.push("- [ ] No TypeScript errors");
+  const tsStacks = new Set(["next", "react", "expo", "node"]);
+  if (tsStacks.has(stack)) {
+    lines.push("- [ ] No TypeScript errors");
+  }
   lines.push("");
 
   if (exemplar) {
@@ -341,6 +344,12 @@ if (cliArgs.command === "init") {
   const cwd = process.cwd();
   const stackInfo = detectTechStack(cwd);
   const stack = cliArgs.template || stackInfo.stacks[0] || "generic";
+
+  if (cliArgs.template && !TEMPLATE_SECTIONS[cliArgs.template]) {
+    console.error(
+      `Warning: unknown stack '${cliArgs.template}', using generic template. Available: ${Object.keys(TEMPLATE_SECTIONS).join(", ")}`,
+    );
+  }
 
   // Scan repos to find exemplar
   let exemplar = null;

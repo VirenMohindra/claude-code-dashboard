@@ -54,9 +54,9 @@
 
 ### Template System
 
-- [x] `claude-code-dashboard init --template react` scaffolds CLAUDE.md + .claude/rules/ based on best existing configs
+- [x] `claude-code-dashboard init --template react` scaffolds CLAUDE.md based on best existing configs
 - [x] Detect common patterns: monolithic CLAUDE.md, modular rules, command-heavy
-- [x] Extract templates from your best-configured repos (mneme, chile, salsa)
+- [x] Use best-configured repos as exemplars for template selection
 - [x] Templates for: react, next, expo, node-backend, go, python, swift, generic
 
 ### Cross-Repo Pattern Detection
