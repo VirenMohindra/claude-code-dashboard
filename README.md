@@ -31,9 +31,9 @@ Scans your home directory for git repos, collects Claude Code configuration (com
 
 ![Repo Expanded](screenshots/05-repo-expanded.png)
 
-### Dark mode
+### Light mode
 
-![Dark Mode](screenshots/06-dark-mode.png)
+![Light Mode](screenshots/06-light-mode.png)
 
 > Screenshots generated with `claude-code-dashboard --demo`
 

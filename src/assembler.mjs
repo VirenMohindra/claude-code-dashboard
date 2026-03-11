@@ -25,7 +25,8 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_DIR = join(__dirname, "..", "template");
 
-// Cache template files (read once per process)
+// Cache template files (read once per process).
+// Assumes one-shot CLI usage; watch mode spawns fresh processes.
 let _css, _js, _html;
 function loadTemplates() {
   if (!_css) _css = readFileSync(join(TEMPLATE_DIR, "dashboard.css"), "utf8");
@@ -103,7 +104,7 @@ export function generateDashboardHtml(data) {
 
   // Repos tab
   const repoCards = configured.map((r) => renderRepoCard(r)).join("\n");
-  const unconfiguredHtml = renderUnconfiguredCard(unconfigured, unconfigured.length);
+  const unconfiguredHtml = renderUnconfiguredCard(unconfigured);
   const tabRepos = `<div class="search-bar">
     <input type="text" id="search" placeholder="search repos..." autocomplete="off">
     <span class="search-hint"><kbd>/</kbd></span>
@@ -127,18 +128,15 @@ export function generateDashboardHtml(data) {
   // Footer
   const footer = `<div class="ts">found ${totalRepos} repos · ${configuredCount} configured · ${unconfiguredCount} unconfigured · scanned ${scanScope} · ${timestamp}</div>`;
 
-  // ── Inject dynamic coverage color into CSS ────────────────────────────────
+  // ── Inject dynamic coverage color via CSS custom property ─────────────────
   const coverageColor =
     coveragePct >= 70 ? "var(--green)" : coveragePct >= 40 ? "var(--yellow)" : "var(--red)";
-  const css = _css.replace(
-    ".stat.coverage b { color: var(--coverage-color, var(--accent)); }",
-    `.stat.coverage b { color: ${coverageColor}; }`,
-  );
+  const css = `:root { --coverage-color: ${coverageColor}; }\n${_css}`;
 
   // ── Assemble final HTML via placeholder replacement ───────────────────────
   let html = _html;
   html = html.replace("<!-- {{CSS}} -->", css);
-  html = html.replace("<!-- {{JS}} -->", _js);
+  html = html.replace("/* {{JS}} */", _js);
   html = html.replace("<!-- {{HEADER}} -->", header);
   html = html.replace("<!-- {{STATS_BAR}} -->", statsBar);
   html = html.replace("<!-- {{TAB_OVERVIEW}} -->", tabOverview);

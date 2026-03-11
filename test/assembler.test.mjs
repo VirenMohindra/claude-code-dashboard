@@ -14,8 +14,10 @@ describe("generateDashboardHtml (assembler)", () => {
 
   it("contains no unresolved placeholders", () => {
     const html = generateDashboardHtml(data);
-    const remaining = html.match(/<!-- \{\{[A-Z_]+\}\} -->/g);
-    assert.equal(remaining, null, `Unresolved placeholders: ${remaining}`);
+    const htmlPlaceholders = html.match(/<!-- \{\{[A-Z_]+\}\} -->/g);
+    const jsPlaceholders = html.match(/\/\* \{\{[A-Z_]+\}\} \*\//g);
+    assert.equal(htmlPlaceholders, null, `Unresolved HTML placeholders: ${htmlPlaceholders}`);
+    assert.equal(jsPlaceholders, null, `Unresolved JS placeholders: ${jsPlaceholders}`);
   });
 
   it("includes all tab sections", () => {
@@ -48,6 +50,15 @@ describe("generateDashboardHtml (assembler)", () => {
     assert.ok(html.includes('id="section-mcp"'));
     assert.ok(html.includes('id="section-commands"'));
     assert.ok(html.includes('id="section-activity"'));
+  });
+
+  it("injects coverage color as CSS custom property", () => {
+    const html = generateDashboardHtml(data);
+    assert.ok(html.includes("--coverage-color:"), "Should inject --coverage-color");
+    assert.ok(
+      !html.includes("var(--coverage-color, var(--accent))") || html.includes("--coverage-color:"),
+      "Should set --coverage-color via :root, not replace CSS rule",
+    );
   });
 
   it("handles empty data gracefully", () => {
@@ -86,7 +97,8 @@ describe("generateDashboardHtml (assembler)", () => {
     const html = generateDashboardHtml(emptyData);
     assert.ok(html.includes("<!DOCTYPE html>"));
     assert.ok(html.includes("</html>"));
-    // No unresolved placeholders
+    // No unresolved placeholders (HTML or JS style)
     assert.equal(html.match(/<!-- \{\{[A-Z_]+\}\} -->/g), null);
+    assert.equal(html.match(/\/\* \{\{[A-Z_]+\}\} \*\//g), null);
   });
 });

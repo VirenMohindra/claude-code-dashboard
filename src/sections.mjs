@@ -1,5 +1,6 @@
 import { esc, formatTokens } from "./helpers.mjs";
-import { renderSkill, groupSkillsByCategory, healthScoreColor } from "./render.mjs";
+import { renderSkill, healthScoreColor } from "./render.mjs";
+import { groupSkillsByCategory } from "./skills.mjs";
 import { QUICK_REFERENCE } from "./constants.mjs";
 
 export function renderSkillsCard(globalSkills) {
@@ -287,10 +288,10 @@ export function renderConsolidationCard(consolidationGroups) {
 </div>`;
 }
 
-export function renderUnconfiguredCard(unconfigured, unconfiguredCount) {
+export function renderUnconfiguredCard(unconfigured) {
   if (!unconfigured.length) return "";
   return `<details class="card">
-  <summary style="cursor:pointer;list-style:none"><h2 style="margin:0">Unconfigured Repos <span class="n">${unconfiguredCount}</span></h2></summary>
+  <summary style="cursor:pointer;list-style:none"><h2 style="margin:0">Unconfigured Repos <span class="n">${unconfigured.length}</span></h2></summary>
   <div style="margin-top:.75rem">
     <div class="unconfigured-grid">
       ${unconfigured
