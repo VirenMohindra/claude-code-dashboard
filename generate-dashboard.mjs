@@ -476,6 +476,14 @@ const esc = (s) =>
 
 const shortPath = (p) => p.replace(HOME, "~");
 
+/** Format large token counts as MM/BB shorthand. */
+function formatTokens(n) {
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B tokens`;
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M tokens`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K tokens`;
+  return `${n} tokens`;
+}
+
 /** Run a git command safely using execFileSync (no shell injection). */
 function gitCmd(repoDir, ...args) {
   try {
@@ -2526,7 +2534,7 @@ ${(() => {
       .sort((a, b) => b.total - a.total)
       .map(
         (m) =>
-          `<div class="model-row"><span class="model-name">${esc(m.name)}</span><span class="model-tokens">${m.total.toLocaleString()} tokens</span></div>`,
+          `<div class="model-row"><span class="model-name">${esc(m.name)}</span><span class="model-tokens">${formatTokens(m.total)}</span></div>`,
       )
       .join("\n      ");
     content += `<div class="label" style="margin-top:.75rem">Model Usage</div>
