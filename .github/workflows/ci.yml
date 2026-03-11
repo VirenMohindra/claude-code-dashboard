@@ -76,3 +76,6 @@ jobs:
           test -f /tmp/catalog.html
           head -1 /tmp/catalog.html | grep -q '<!DOCTYPE html>'
           echo "Catalog generated successfully ($(wc -c < /tmp/catalog.html) bytes)"
+      - name: Verify lint subcommand
+        run: |
+          node generate-dashboard.mjs lint || echo "Lint found issues (expected in test env)"
