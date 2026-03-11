@@ -32,7 +32,7 @@ import {
 import { parseArgs, generateCompletions } from "./src/cli.mjs";
 import { shortPath, gitCmd } from "./src/helpers.mjs";
 import { anonymizeAll } from "./src/anonymize.mjs";
-import { generateDemoData } from "./src/demo.mjs";
+import { generateDemoRawInputs } from "./src/demo.mjs";
 import { findGitRepos, getScanRoots } from "./src/discovery.mjs";
 import { extractProjectDesc, extractSections, scanMdDir } from "./src/markdown.mjs";
 import { scanSkillsDir, groupSkillsByCategory } from "./src/skills.mjs";
@@ -63,8 +63,9 @@ if (cliArgs.command === "init") handleInit(cliArgs);
 // ── Demo Mode ────────────────────────────────────────────────────────────────
 
 if (cliArgs.demo) {
-  const demoData = generateDemoData();
-  const html = generateDashboardHtml(demoData);
+  const rawInputs = generateDemoRawInputs();
+  const data = buildDashboardData(rawInputs);
+  const html = generateDashboardHtml(data);
 
   const outputPath = cliArgs.output;
   mkdirSync(dirname(outputPath), { recursive: true });
