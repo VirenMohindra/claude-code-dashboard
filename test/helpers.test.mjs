@@ -448,3 +448,240 @@ describe("skill source badge rendering", () => {
     assert.equal(sourceBadgeHtml(null), "");
   });
 });
+
+// ── Config Health Score ─────────────────────────────────────────────────────
+
+function computeHealthScore(repo) {
+  let score = 0;
+  const reasons = [];
+
+  // Has AGENTS.md/CLAUDE.md (30 points)
+  if (repo.hasAgentsFile) {
+    score += 30;
+  } else {
+    reasons.push("add CLAUDE.md");
+  }
+
+  // Has description (10 points)
+  if (repo.desc && repo.desc.length > 0) {
+    score += 10;
+  } else {
+    reasons.push("add project description");
+  }
+
+  // Has commands (20 points)
+  if (repo.commandCount > 0) {
+    score += Math.min(20, repo.commandCount * 10);
+  } else {
+    reasons.push("add commands");
+  }
+
+  // Has rules (20 points)
+  if (repo.ruleCount > 0) {
+    score += Math.min(20, repo.ruleCount * 10);
+  } else {
+    reasons.push("add rules");
+  }
+
+  // Has sections / structured config (10 points)
+  if (repo.sectionCount > 0) {
+    score += Math.min(10, repo.sectionCount * 2);
+  } else {
+    reasons.push("add structured sections");
+  }
+
+  // Freshness (10 points)
+  if (repo.freshnessClass === "fresh") {
+    score += 10;
+  } else if (repo.freshnessClass === "aging") {
+    score += 5;
+    reasons.push("update config (aging)");
+  } else {
+    reasons.push("update config (stale)");
+  }
+
+  return { score: Math.min(100, score), reasons };
+}
+
+describe("computeHealthScore()", () => {
+  it("scores a fully configured repo at 100", () => {
+    const result = computeHealthScore({
+      hasAgentsFile: true,
+      desc: ["some description"],
+      commandCount: 3,
+      ruleCount: 3,
+      sectionCount: 10,
+      freshnessClass: "fresh",
+    });
+    assert.equal(result.score, 100);
+    assert.equal(result.reasons.length, 0);
+  });
+
+  it("scores an empty repo at 0 with all reasons", () => {
+    const result = computeHealthScore({
+      hasAgentsFile: false,
+      desc: [],
+      commandCount: 0,
+      ruleCount: 0,
+      sectionCount: 0,
+      freshnessClass: "stale",
+    });
+    assert.equal(result.score, 0);
+    assert.equal(result.reasons.length, 6);
+  });
+
+  it("gives partial credit for commands", () => {
+    const one = computeHealthScore({
+      hasAgentsFile: false,
+      desc: [],
+      commandCount: 1,
+      ruleCount: 0,
+      sectionCount: 0,
+      freshnessClass: "stale",
+    });
+    const two = computeHealthScore({
+      hasAgentsFile: false,
+      desc: [],
+      commandCount: 2,
+      ruleCount: 0,
+      sectionCount: 0,
+      freshnessClass: "stale",
+    });
+    assert.ok(two.score > one.score);
+  });
+
+  it("caps commands at 20 points", () => {
+    const result = computeHealthScore({
+      hasAgentsFile: false,
+      desc: [],
+      commandCount: 10,
+      ruleCount: 0,
+      sectionCount: 0,
+      freshnessClass: "stale",
+    });
+    assert.equal(result.score, 20);
+  });
+
+  it("gives 5 points for aging freshness", () => {
+    const aging = computeHealthScore({
+      hasAgentsFile: false,
+      desc: [],
+      commandCount: 0,
+      ruleCount: 0,
+      sectionCount: 0,
+      freshnessClass: "aging",
+    });
+    assert.equal(aging.score, 5);
+    assert.ok(aging.reasons.some((r) => r.includes("aging")));
+  });
+
+  it("returns quick-win reasons", () => {
+    const result = computeHealthScore({
+      hasAgentsFile: true,
+      desc: ["desc"],
+      commandCount: 2,
+      ruleCount: 0,
+      sectionCount: 5,
+      freshnessClass: "fresh",
+    });
+    assert.ok(result.reasons.includes("add rules"));
+    assert.equal(result.reasons.length, 1);
+  });
+});
+
+// ── Tech Stack Detection ────────────────────────────────────────────────────
+
+function detectTechStack(files) {
+  const stacks = [];
+
+  if (files.includes("package.json")) {
+    if (files.includes("next.config")) stacks.push("next");
+    else if (files.includes("expo")) stacks.push("expo");
+    else if (files.includes("react")) stacks.push("react");
+    else stacks.push("node");
+  }
+  if (files.includes("Cargo.toml")) stacks.push("rust");
+  if (files.includes("go.mod")) stacks.push("go");
+  if (files.includes("requirements.txt") || files.includes("pyproject.toml")) stacks.push("python");
+  if (files.includes("Package.swift")) stacks.push("swift");
+  if (files.includes("Gemfile")) stacks.push("ruby");
+  if (files.includes("pom.xml") || files.includes("build.gradle")) stacks.push("java");
+
+  return stacks;
+}
+
+describe("detectTechStack()", () => {
+  it("detects Next.js", () => {
+    assert.deepEqual(detectTechStack(["package.json", "next.config"]), ["next"]);
+  });
+
+  it("detects plain node", () => {
+    assert.deepEqual(detectTechStack(["package.json"]), ["node"]);
+  });
+
+  it("detects Go", () => {
+    assert.deepEqual(detectTechStack(["go.mod"]), ["go"]);
+  });
+
+  it("detects Rust", () => {
+    assert.deepEqual(detectTechStack(["Cargo.toml"]), ["rust"]);
+  });
+
+  it("detects Python from pyproject.toml", () => {
+    assert.deepEqual(detectTechStack(["pyproject.toml"]), ["python"]);
+  });
+
+  it("detects Swift", () => {
+    assert.deepEqual(detectTechStack(["Package.swift"]), ["swift"]);
+  });
+
+  it("detects multiple stacks", () => {
+    const result = detectTechStack(["package.json", "go.mod"]);
+    assert.ok(result.includes("node"));
+    assert.ok(result.includes("go"));
+  });
+
+  it("returns empty for unknown project", () => {
+    assert.deepEqual(detectTechStack(["README.md"]), []);
+  });
+});
+
+// ── Drift Detection ─────────────────────────────────────────────────────────
+
+function computeDrift(configTimestamp, lastCommitTimestamp, commitsSinceConfig) {
+  if (!configTimestamp || !lastCommitTimestamp) return { level: "unknown", commitsSince: 0 };
+
+  if (commitsSinceConfig === 0) return { level: "synced", commitsSince: 0 };
+  if (commitsSinceConfig <= 5) return { level: "low", commitsSince: commitsSinceConfig };
+  if (commitsSinceConfig <= 20) return { level: "medium", commitsSince: commitsSinceConfig };
+  return { level: "high", commitsSince: commitsSinceConfig };
+}
+
+describe("computeDrift()", () => {
+  const now = Math.floor(Date.now() / 1000);
+
+  it("returns synced when no commits since config", () => {
+    const result = computeDrift(now - 100, now, 0);
+    assert.equal(result.level, "synced");
+  });
+
+  it("returns low for 1-5 commits", () => {
+    assert.equal(computeDrift(now - 1000, now, 3).level, "low");
+  });
+
+  it("returns medium for 6-20 commits", () => {
+    assert.equal(computeDrift(now - 10000, now, 12).level, "medium");
+  });
+
+  it("returns high for 20+ commits", () => {
+    assert.equal(computeDrift(now - 100000, now, 45).level, "high");
+  });
+
+  it("returns unknown when no config timestamp", () => {
+    assert.equal(computeDrift(0, now, 5).level, "unknown");
+  });
+
+  it("includes commit count", () => {
+    assert.equal(computeDrift(now - 1000, now, 12).commitsSince, 12);
+  });
+});

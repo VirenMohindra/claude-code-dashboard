@@ -32,7 +32,7 @@ import { homedir } from "os";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 
 const HOME = homedir();
 const CLAUDE_DIR = join(HOME, ".claude");
@@ -502,6 +502,133 @@ function scanSkillsDir(dir) {
   return results.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// ── Config Health Score ──────────────────────────────────────────────────────
+
+function computeHealthScore(repo) {
+  let score = 0;
+  const reasons = [];
+
+  // Has AGENTS.md/CLAUDE.md (30 points)
+  if (repo.hasAgentsFile) {
+    score += 30;
+  } else {
+    reasons.push("add CLAUDE.md");
+  }
+
+  // Has description (10 points)
+  if (repo.desc && repo.desc.length > 0) {
+    score += 10;
+  } else {
+    reasons.push("add project description");
+  }
+
+  // Has commands (20 points)
+  if (repo.commandCount > 0) {
+    score += Math.min(20, repo.commandCount * 10);
+  } else {
+    reasons.push("add commands");
+  }
+
+  // Has rules (20 points)
+  if (repo.ruleCount > 0) {
+    score += Math.min(20, repo.ruleCount * 10);
+  } else {
+    reasons.push("add rules");
+  }
+
+  // Has sections / structured config (10 points)
+  if (repo.sectionCount > 0) {
+    score += Math.min(10, repo.sectionCount * 2);
+  } else {
+    reasons.push("add structured sections");
+  }
+
+  // Freshness (10 points)
+  if (repo.freshnessClass === "fresh") {
+    score += 10;
+  } else if (repo.freshnessClass === "aging") {
+    score += 5;
+    reasons.push("update config (aging)");
+  } else {
+    reasons.push("update config (stale)");
+  }
+
+  return { score: Math.min(100, score), reasons };
+}
+
+// ── Tech Stack Detection ────────────────────────────────────────────────────
+
+const STACK_FILES = {
+  "next.config.js": "next",
+  "next.config.mjs": "next",
+  "next.config.ts": "next",
+  "app.json": "expo", // Expo projects have app.json with expo key
+  "Cargo.toml": "rust",
+  "go.mod": "go",
+  "requirements.txt": "python",
+  "pyproject.toml": "python",
+  "setup.py": "python",
+  "Package.swift": "swift",
+  Gemfile: "ruby",
+  "pom.xml": "java",
+  "build.gradle": "java",
+  "build.gradle.kts": "java",
+};
+
+function detectTechStack(repoDir) {
+  const stacks = new Set();
+  let hasPackageJson = false;
+
+  try {
+    const entries = new Set(readdirSync(repoDir));
+
+    for (const [file, stack] of Object.entries(STACK_FILES)) {
+      if (entries.has(file)) stacks.add(stack);
+    }
+
+    if (entries.has("package.json")) {
+      hasPackageJson = true;
+      // Check for React/Expo in package.json if no framework detected yet
+      if (!stacks.has("next") && !stacks.has("expo")) {
+        try {
+          const pkg = JSON.parse(readFileSync(join(repoDir, "package.json"), "utf8"));
+          const allDeps = {
+            ...(pkg.dependencies || {}),
+            ...(pkg.devDependencies || {}),
+          };
+          if (allDeps["expo"]) stacks.add("expo");
+          else if (allDeps["next"]) stacks.add("next");
+          else if (allDeps["react"]) stacks.add("react");
+        } catch {
+          /* malformed package.json */
+        }
+      }
+      if (stacks.size === 0) stacks.add("node");
+    }
+  } catch {
+    /* unreadable dir */
+  }
+
+  return { stacks: [...stacks], hasPackageJson };
+}
+
+// ── Drift Detection ─────────────────────────────────────────────────────────
+
+function computeDrift(repoDir, configTimestamp) {
+  if (!configTimestamp) return { level: "unknown", commitsSince: 0 };
+
+  // Count commits since the config was last updated
+  const countStr = gitCmd(repoDir, "rev-list", "--count", `--since=${configTimestamp}`, "HEAD");
+  const commitsSince = Math.max(0, Number(countStr) - 1); // -1 to exclude the config commit itself
+
+  if (commitsSince === 0) return { level: "synced", commitsSince: 0 };
+  if (commitsSince <= 5) return { level: "low", commitsSince };
+  if (commitsSince <= 20) return { level: "medium", commitsSince };
+  return { level: "high", commitsSince };
+}
+
+// ── Freshness ───────────────────────────────────────────────────────────────
+
 function getFreshness(repoDir) {
   const ts = gitCmd(
     repoDir,
@@ -582,10 +709,31 @@ for (const repoDir of allRepoPaths) {
 
   const hasConfig = repo.commands.length > 0 || repo.rules.length > 0 || agentsFile;
 
+  // Tech stack (for both configured and unconfigured)
+  const stackInfo = detectTechStack(repoDir);
+  repo.techStack = stackInfo.stacks;
+
   if (hasConfig) {
     repo.freshness = getFreshness(repoDir);
     repo.freshnessText = relativeTime(repo.freshness);
     repo.freshnessClass = freshnessClass(repo.freshness);
+
+    // Health score
+    const health = computeHealthScore({
+      hasAgentsFile: !!agentsFile,
+      desc: repo.desc,
+      commandCount: repo.commands.length,
+      ruleCount: repo.rules.length,
+      sectionCount: repo.sections.length,
+      freshnessClass: repo.freshnessClass,
+    });
+    repo.healthScore = health.score;
+    repo.healthReasons = health.reasons;
+
+    // Drift detection
+    const drift = computeDrift(repoDir, repo.freshness);
+    repo.drift = drift;
+
     configured.push(repo);
   } else {
     unconfigured.push(repo);
@@ -625,6 +773,13 @@ const configuredCount = configured.length;
 const unconfiguredCount = unconfigured.length;
 const coveragePct = totalRepos > 0 ? Math.round((configuredCount / totalRepos) * 100) : 0;
 const totalRepoCmds = configured.reduce((sum, r) => sum + r.commands.length, 0);
+const avgHealth =
+  configured.length > 0
+    ? Math.round(configured.reduce((sum, r) => sum + (r.healthScore || 0), 0) / configured.length)
+    : 0;
+const driftCount = configured.filter(
+  (r) => r.drift && (r.drift.level === "medium" || r.drift.level === "high"),
+).length;
 
 // ── HTML Rendering ───────────────────────────────────────────────────────────
 
@@ -707,20 +862,48 @@ function renderBadges(repo) {
   if (repo.rules.length) b.push(`<span class="badge rules">${repo.rules.length} rules</span>`);
   if (repo.sections.length)
     b.push(`<span class="badge agent">${repo.sections.length} sections</span>`);
+  if (repo.techStack && repo.techStack.length)
+    b.push(`<span class="badge stack">${esc(repo.techStack.join(", "))}</span>`);
   return b.join("");
+}
+
+function healthScoreColor(score) {
+  if (score >= 80) return "var(--green)";
+  if (score >= 50) return "var(--yellow)";
+  return "var(--red)";
+}
+
+function renderHealthBar(repo) {
+  if (repo.healthScore === undefined) return "";
+  const color = healthScoreColor(repo.healthScore);
+  return `<div class="health-bar"><div class="health-fill" style="width:${repo.healthScore}%;background:${color}"></div><span class="health-label">${repo.healthScore}</span></div>`;
+}
+
+function renderDriftIndicator(repo) {
+  if (!repo.drift || repo.drift.level === "unknown" || repo.drift.level === "synced") return "";
+  const cls = `drift-${repo.drift.level}`;
+  return `<span class="drift ${cls}" title="${repo.drift.commitsSince} commits since config update">${repo.drift.commitsSince}&#8203;&#916;</span>`;
 }
 
 function renderRepoCard(repo) {
   const badges = renderBadges(repo);
   const preview = repo.desc[0] ? esc(repo.desc[0].slice(0, 120)) : "";
+  const drift = renderDriftIndicator(repo);
 
   let body = "";
 
   body += `<div class="repo-meta"><span class="repo-path">${esc(repo.shortPath)}</span>`;
-  body += `<span class="freshness ${repo.freshnessClass}">${esc(repo.freshnessText)}</span></div>`;
+  body += `<span class="freshness ${repo.freshnessClass}">${esc(repo.freshnessText)}${drift}</span></div>`;
+
+  body += renderHealthBar(repo);
 
   if (repo.desc.length) {
     body += `<div class="repo-desc">${repo.desc.map((l) => esc(l)).join("<br>")}</div>`;
+  }
+
+  if (repo.healthReasons && repo.healthReasons.length) {
+    body += `<div class="label">Quick Wins</div>`;
+    body += `<div class="quick-wins">${repo.healthReasons.map((r) => `<span class="quick-win">${esc(r)}</span>`).join("")}</div>`;
   }
 
   if (repo.commands.length) {
@@ -738,7 +921,7 @@ function renderRepoCard(repo) {
     body += renderSections(repo.sections);
   }
 
-  return `<details class="repo-card" data-name="${esc(repo.name)}" data-path="${esc(repo.shortPath)}">
+  return `<details class="repo-card" data-name="${esc(repo.name)}" data-path="${esc(repo.shortPath)}" data-stack="${esc((repo.techStack || []).join(","))}">
   <summary>
     <div class="repo-header">
       <div class="repo-name">${esc(repo.name)}<span class="freshness-dot ${repo.freshnessClass}"></span></div>
@@ -887,6 +1070,18 @@ const html = `<!DOCTYPE html>
   .skill-category-label { font-size: .6rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); padding: .3rem 0; margin-bottom: .25rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: .4rem; }
   .skill-category-label .cat-n { font-size: .55rem; color: var(--accent-dim); }
 
+  .health-bar { height: 4px; background: var(--surface2); border-radius: 2px; margin: .4rem 0 .5rem; position: relative; overflow: hidden; }
+  .health-fill { height: 100%; border-radius: 2px; transition: width .3s; }
+  .health-label { position: absolute; right: 0; top: -14px; font-size: .55rem; color: var(--text-dim); }
+  .badge.stack { color: var(--accent); border-color: var(--accent-dim); background: rgba(196,149,106,.08); text-transform: none; }
+  .drift { font-size: .58rem; margin-left: .4rem; font-weight: 600; }
+  .drift-low { color: var(--text-dim); }
+  .drift-medium { color: var(--yellow); }
+  .drift-high { color: var(--red); }
+  .quick-wins { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: .5rem; }
+  .quick-win { font-size: .6rem; padding: .15rem .4rem; border-radius: 3px; background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.2); color: var(--yellow); }
+  .unconfigured-item .stack-tag { font-size: .5rem; color: var(--accent-dim); margin-left: .3rem; }
+
   .freshness-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; }
   .freshness-dot.fresh { background: var(--green); }
   .freshness-dot.aging { background: var(--yellow); }
@@ -915,10 +1110,11 @@ const html = `<!DOCTYPE html>
 
 <div class="stats">
   <div class="stat coverage"><b>${coveragePct}%</b><span>Coverage (${configuredCount}/${totalRepos})</span></div>
+  <div class="stat" style="${avgHealth >= 70 ? "border-color:#4ade8033" : avgHealth >= 40 ? "border-color:#fbbf2433" : "border-color:#f8717133"}"><b style="color:${healthScoreColor(avgHealth)}">${avgHealth}</b><span>Avg Health</span></div>
   <div class="stat"><b>${globalCmds.length}</b><span>Global Commands</span></div>
-  <div class="stat"><b>${globalRules.length}</b><span>Global Rules</span></div>
   <div class="stat"><b>${globalSkills.length}</b><span>Skills</span></div>
   <div class="stat"><b>${totalRepoCmds}</b><span>Repo Commands</span></div>
+  ${driftCount > 0 ? `<div class="stat" style="border-color:#f8717133"><b style="color:var(--red)">${driftCount}</b><span>Drifting Repos</span></div>` : ""}
 </div>
 
 <div class="top-grid">
@@ -972,7 +1168,7 @@ ${
   <summary style="cursor:pointer;list-style:none"><h2 style="margin:0">Unconfigured Repos <span class="n">${unconfiguredCount}</span></h2></summary>
   <div style="margin-top:.75rem">
     <div class="unconfigured-grid">
-      ${unconfigured.map((r) => `<div class="unconfigured-item">${esc(r.name)}<span class="upath">${esc(r.shortPath)}</span></div>`).join("\n      ")}
+      ${unconfigured.map((r) => `<div class="unconfigured-item">${esc(r.name)}${r.techStack && r.techStack.length ? `<span class="stack-tag">${esc(r.techStack.join(", "))}</span>` : ""}<span class="upath">${esc(r.shortPath)}</span></div>`).join("\n      ")}
     </div>
   </div>
 </details>`
@@ -1027,6 +1223,8 @@ if (cliArgs.json) {
       globalRules: globalRules.length,
       skills: globalSkills.length,
       repoCommands: totalRepoCmds,
+      avgHealthScore: avgHealth,
+      driftingRepos: driftCount,
     },
     globalCommands: globalCmds.map((c) => ({ name: c.name, description: c.desc })),
     globalRules: globalRules.map((r) => ({ name: r.name, description: r.desc })),
@@ -1047,15 +1245,20 @@ if (cliArgs.json) {
       rules: r.rules.map((ru) => ({ name: ru.name, description: ru.desc })),
       sections: r.sections.map((s) => s.name),
       description: r.desc,
+      techStack: r.techStack || [],
+      healthScore: r.healthScore || 0,
+      healthReasons: r.healthReasons || [],
       freshness: {
         timestamp: r.freshness,
         relative: r.freshnessText,
         class: r.freshnessClass,
       },
+      drift: r.drift || { level: "unknown", commitsSince: 0 },
     })),
     unconfiguredRepos: unconfigured.map((r) => ({
       name: r.name,
       path: r.shortPath,
+      techStack: r.techStack || [],
     })),
   };
 
