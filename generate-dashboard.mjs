@@ -345,6 +345,23 @@ function scanMdDir(dir) {
   return results.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** Scan ~/.claude/skills/ — each subdirectory with a SKILL.md is a skill. */
+function scanSkillsDir(dir) {
+  if (!existsSync(dir)) return [];
+  const results = [];
+  try {
+    for (const entry of readdirSync(dir)) {
+      const skillFile = join(dir, entry, "SKILL.md");
+      if (!existsSync(skillFile)) continue;
+      const desc = getDesc(skillFile);
+      results.push({ name: entry, desc: desc || "No description", filepath: skillFile });
+    }
+  } catch {
+    /* directory unreadable */
+  }
+  return results.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function getFreshness(repoDir) {
   const ts = gitCmd(
     repoDir,
@@ -385,6 +402,7 @@ const allRepoPaths = findGitRepos(scanRoots, MAX_DEPTH);
 
 const globalCmds = scanMdDir(join(CLAUDE_DIR, "commands"));
 const globalRules = scanMdDir(join(CLAUDE_DIR, "rules"));
+const globalSkills = scanSkillsDir(join(CLAUDE_DIR, "skills"));
 
 const configured = [];
 const unconfigured = [];
@@ -500,6 +518,15 @@ function renderRule(rule) {
     return `<details class="cmd-detail"><summary><span class="cmd-name">${esc(rule.name)}</span><span class="cmd-desc">${d}</span></summary><div class="detail-body">${renderSections(sections)}</div></details>`;
   }
   return `<div class="cmd-row"><span class="cmd-name">${esc(rule.name)}</span><span class="cmd-desc">${d}</span></div>`;
+}
+
+function renderSkill(skill) {
+  const sections = extractSections(skill.filepath);
+  const d = esc(skill.desc);
+  if (sections.length) {
+    return `<details class="cmd-detail"><summary><span class="cmd-name skill-name">${esc(skill.name)}</span><span class="cmd-desc">${d}</span></summary><div class="detail-body">${renderSections(sections)}</div></details>`;
+  }
+  return `<div class="cmd-row"><span class="cmd-name skill-name">${esc(skill.name)}</span><span class="cmd-desc">${d}</span></div>`;
 }
 
 function renderBadges(repo) {
@@ -677,6 +704,8 @@ const html = `<!DOCTYPE html>
   .badge.cmds { color: var(--green); border-color: #4ade8033; background: #4ade8010; }
   .badge.rules { color: var(--purple); border-color: #a78bfa33; background: #a78bfa10; }
   .badge.agent { color: var(--blue); border-color: #60a5fa33; background: #60a5fa10; }
+  .badge.skills { color: var(--yellow); border-color: #fbbf2433; background: #fbbf2410; }
+  .skill-name { color: var(--yellow) !important; }
 
   .freshness-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; }
   .freshness-dot.fresh { background: var(--green); }
@@ -708,6 +737,7 @@ const html = `<!DOCTYPE html>
   <div class="stat coverage"><b>${coveragePct}%</b><span>Coverage (${configuredCount}/${totalRepos})</span></div>
   <div class="stat"><b>${globalCmds.length}</b><span>Global Commands</span></div>
   <div class="stat"><b>${globalRules.length}</b><span>Global Rules</span></div>
+  <div class="stat"><b>${globalSkills.length}</b><span>Skills</span></div>
   <div class="stat"><b>${totalRepoCmds}</b><span>Repo Commands</span></div>
 </div>
 
@@ -720,6 +750,14 @@ const html = `<!DOCTYPE html>
   <h2>Global Rules <span class="n">${globalRules.length}</span></h2>
   ${globalRules.map((r) => renderRule(r)).join("\n  ")}
 </div>
+${
+  globalSkills.length
+    ? `<div class="card full">
+  <h2>Skills <span class="n">${globalSkills.length}</span></h2>
+  ${globalSkills.map((s) => renderSkill(s)).join("\n  ")}
+</div>`
+    : ""
+}
 ${
   chains.length
     ? `<div class="card full">
