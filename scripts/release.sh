@@ -53,7 +53,7 @@ git tag "v$NEW_VERSION"
 git push origin main --tags
 
 echo ""
-echo "Pushed v$NEW_VERSION. Now create a GitHub Release to publish to npm:"
+echo "Creating GitHub Release (triggers npm publish)..."
+gh release create "v$NEW_VERSION" --title "v$NEW_VERSION" --generate-notes
 echo ""
-echo "  gh release create v$NEW_VERSION --title \"v$NEW_VERSION\" --generate-notes"
-echo ""
+echo "Released v$NEW_VERSION"
