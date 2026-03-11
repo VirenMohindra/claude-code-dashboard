@@ -9,7 +9,12 @@ import assert from "node:assert/strict";
 // ── HTML Escaping ────────────────────────────────────────────────────────────
 
 const esc = (s) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 
 describe("esc()", () => {
   it("escapes ampersands", () => {
@@ -22,6 +27,10 @@ describe("esc()", () => {
 
   it("escapes double quotes", () => {
     assert.equal(esc('data-name="test"'), "data-name=&quot;test&quot;");
+  });
+
+  it("escapes single quotes", () => {
+    assert.equal(esc("it's a test"), "it&#39;s a test");
   });
 
   it("handles all special chars together", () => {

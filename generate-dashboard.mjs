@@ -216,7 +216,8 @@ Config file: ~/.claude/dashboard.conf
 const cliArgs = parseArgs(process.argv);
 
 // ── Shell Completions ───────────────────────────────────────────────────────
-
+// Note: \$ in the template literal below prevents JS interpolation —
+// the literal ${ must reach the shell script output.
 if (cliArgs.completions) {
   console.log(`# claude-code-dashboard completions
 # eval "$(claude-code-dashboard --completions)"
@@ -466,7 +467,12 @@ if (cliArgs.command === "init") {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const esc = (s) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 
 const shortPath = (p) => p.replace(HOME, "~");
 
@@ -701,6 +707,7 @@ const CATEGORY_ORDER = [
   "project-specific",
 ];
 
+// Last verified against Claude Code v2.1.72 (March 2026)
 const QUICK_REFERENCE = {
   essentialCommands: [
     { cmd: "/help", desc: "Show help and available commands" },
@@ -1474,7 +1481,7 @@ for (const repoDir of allRepoPaths) {
   }
 }
 
-// Disabled MCP servers from ~/.claude.json
+// Disabled MCP servers from ~/.claude.json (per-project settings keyed by path)
 const disabledMcpByRepo = {};
 const claudeJsonPath = join(HOME, ".claude.json");
 if (existsSync(claudeJsonPath)) {
@@ -1482,19 +1489,30 @@ if (existsSync(claudeJsonPath)) {
     const claudeJsonContent = readFileSync(claudeJsonPath, "utf8");
     const claudeJson = JSON.parse(claudeJsonContent);
     for (const [path, entry] of Object.entries(claudeJson)) {
-      if (entry && Array.isArray(entry.disabledMcpServers) && entry.disabledMcpServers.length > 0) {
+      if (
+        typeof entry === "object" &&
+        entry !== null &&
+        Array.isArray(entry.disabledMcpServers) &&
+        entry.disabledMcpServers.length > 0
+      ) {
         disabledMcpByRepo[path] = entry.disabledMcpServers;
       }
     }
   } catch {
-    // skip if parse fails (JSON5-ish, trailing commas, etc.)
+    // skip if parse fails
   }
 }
 
 // Build MCP summary
 const mcpPromotions = findPromotionCandidates(allMcpServers);
 
-const disabledNames = new Set(Object.values(disabledMcpByRepo).flat());
+// Build per-server disabled state: track which repos have each server disabled
+const disabledByServer = {};
+for (const [, names] of Object.entries(disabledMcpByRepo)) {
+  for (const name of names) {
+    disabledByServer[name] = (disabledByServer[name] || 0) + 1;
+  }
+}
 
 const mcpByName = {};
 for (const s of allMcpServers) {
@@ -1504,13 +1522,13 @@ for (const s of allMcpServers) {
       type: s.type,
       projects: [],
       userLevel: false,
-      disabled: false,
+      disabledIn: 0,
     };
   if (s.scope === "user") mcpByName[s.name].userLevel = true;
   if (s.scope === "project") mcpByName[s.name].projects.push(s.source);
 }
 for (const entry of Object.values(mcpByName)) {
-  if (disabledNames.has(entry.name)) entry.disabled = true;
+  entry.disabledIn = disabledByServer[entry.name] || 0;
 }
 const mcpSummary = Object.values(mcpByName).sort((a, b) => {
   if (a.userLevel !== b.userLevel) return a.userLevel ? -1 : 1;
@@ -1521,12 +1539,17 @@ const mcpCount = mcpSummary.length;
 // ── Usage Analytics Data Collection ─────────────────────────────────────────
 
 // Session meta files from ~/.claude/usage-data/session-meta/*.json
+// Limit to most recent 500 files to avoid blocking on very large directories
+const SESSION_META_LIMIT = 500;
 const sessionMetaDir = join(CLAUDE_DIR, "usage-data", "session-meta");
 const sessionMetaFiles = [];
 if (existsSync(sessionMetaDir)) {
   try {
-    for (const f of readdirSync(sessionMetaDir)) {
-      if (!f.endsWith(".json")) continue;
+    const files = readdirSync(sessionMetaDir)
+      .filter((f) => f.endsWith(".json"))
+      .sort()
+      .slice(-SESSION_META_LIMIT);
+    for (const f of files) {
       try {
         const content = readFileSync(join(sessionMetaDir, f), "utf8");
         sessionMetaFiles.push(JSON.parse(content));
@@ -1582,27 +1605,21 @@ if (cliArgs.command === "lint") {
   for (const repo of configured) {
     const issues = lintConfig(repo);
     if (issues.length === 0) continue;
-    console.log(`\n${repo.name} (${repo.shortPath}):`);
+    if (!cliArgs.quiet) console.log(`\n${repo.name} (${repo.shortPath}):`);
     for (const issue of issues) {
-      console.log(`  ${issue.level === "warn" ? "WARN" : "INFO"}: ${issue.message}`);
+      if (!cliArgs.quiet)
+        console.log(`  ${issue.level === "warn" ? "WARN" : "INFO"}: ${issue.message}`);
       totalIssues++;
     }
   }
-  if (totalIssues === 0) console.log("No config issues found.");
-  else console.log(`\n${totalIssues} issue(s) found.`);
+  if (!cliArgs.quiet) {
+    if (totalIssues === 0) console.log("No config issues found.");
+    else console.log(`\n${totalIssues} issue(s) found.`);
+  }
   process.exit(totalIssues > 0 ? 1 : 0);
 }
 
-// ── Anonymize Paths ─────────────────────────────────────────────────────────
-
-if (cliArgs.anonymize) {
-  for (const repo of [...configured, ...unconfigured]) {
-    repo.shortPath = anonymizePath(repo.shortPath);
-    repo.path = anonymizePath(repo.path);
-  }
-}
-
-// ── Dashboard Diff ──────────────────────────────────────────────────────────
+// ── Dashboard Diff (must run BEFORE anonymize so snapshots use real names) ──
 
 const SNAPSHOT_PATH = join(CLAUDE_DIR, "dashboard-snapshot.json");
 if (cliArgs.diff) {
@@ -1626,6 +1643,15 @@ if (cliArgs.diff) {
     console.log("No previous snapshot found, saving baseline.");
   }
   writeFileSync(SNAPSHOT_PATH, JSON.stringify(currentSnapshot, null, 2));
+}
+
+// ── Anonymize Paths (after diff snapshot, before HTML generation) ────────────
+
+if (cliArgs.anonymize) {
+  for (const repo of [...configured, ...unconfigured]) {
+    repo.shortPath = anonymizePath(repo.shortPath);
+    repo.path = anonymizePath(repo.path);
+  }
 }
 
 // ── JSON Output (short-circuit before HTML generation) ──────────────────────
@@ -2137,7 +2163,8 @@ const html = `<!DOCTYPE html>
 
   .mcp-row { display: flex; align-items: center; gap: .5rem; padding: .3rem .25rem; border-bottom: 1px solid var(--border); font-size: .8rem; flex-wrap: wrap; }
   .mcp-row:last-child { border-bottom: none; }
-  .mcp-row.mcp-disabled { opacity: .4; }
+  .mcp-row.mcp-disabled { opacity: .5; }
+  .mcp-disabled-hint { font-size: .6rem; color: var(--red); opacity: .8; }
   .mcp-name { font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace; font-weight: 600; color: var(--text); font-size: .78rem; }
   .mcp-projects { font-size: .65rem; color: var(--text-dim); margin-left: auto; }
   .badge.mcp-global { color: var(--green); border-color: #4ade8033; background: #4ade8010; }
@@ -2302,7 +2329,11 @@ ${
     ? (() => {
         const rows = mcpSummary
           .map((s) => {
-            const disabledClass = s.disabled ? " mcp-disabled" : "";
+            const disabledClass = s.disabledIn > 0 ? " mcp-disabled" : "";
+            const disabledHint =
+              s.disabledIn > 0
+                ? `<span class="mcp-disabled-hint">disabled in ${s.disabledIn} project${s.disabledIn > 1 ? "s" : ""}</span>`
+                : "";
             const scopeBadge = s.userLevel
               ? `<span class="badge mcp-global">global</span>`
               : `<span class="badge mcp-project">project</span>`;
@@ -2310,7 +2341,7 @@ ${
             const projects = s.projects.length
               ? `<span class="mcp-projects">${s.projects.map((p) => esc(p)).join(", ")}</span>`
               : "";
-            return `<div class="mcp-row${disabledClass}"><span class="mcp-name">${esc(s.name)}</span>${scopeBadge}${typeBadge}${projects}</div>`;
+            return `<div class="mcp-row${disabledClass}"><span class="mcp-name">${esc(s.name)}</span>${scopeBadge}${typeBadge}${disabledHint}${projects}</div>`;
           })
           .join("\n    ");
         const promoteHtml = mcpPromotions.length
@@ -2379,8 +2410,11 @@ ${(() => {
   if (hasActivity) {
     const dateMap = new Map(dailyActivity.map((d) => [d.date, d.messageCount || 0]));
     const dates = dailyActivity.map((d) => d.date).sort();
-    const firstDate = new Date(dates[0]);
     const lastDate = new Date(dates[dates.length - 1]);
+    // Cap to last 52 weeks (like GitHub contribution graph)
+    const earliest = new Date(lastDate);
+    earliest.setDate(earliest.getDate() - 364);
+    const firstDate = new Date(dates[0]) < earliest ? earliest : new Date(dates[0]);
 
     // Compute thresholds (quartiles of non-zero days)
     const nonZero = dailyActivity
@@ -2432,7 +2466,7 @@ ${(() => {
     while (cursor2 <= lastDate) {
       const key = cursor2.toISOString().slice(0, 10);
       const count = dateMap.get(key) || 0;
-      cells += `<div class="heatmap-cell${level(count)}" title="${key}: ${count} messages"></div>`;
+      cells += `<div class="heatmap-cell${level(count)}" title="${esc(key)}: ${count} messages"></div>`;
       cursor2.setDate(cursor2.getDate() + 1);
     }
 
@@ -2451,7 +2485,7 @@ ${(() => {
     for (let h = 0; h < 24; h++) {
       const count = hourCounts[String(h)] || 0;
       const pct = Math.round((count / maxHour) * 100);
-      bars += `<div class="peak-bar" style="height:${Math.max(pct, 2)}%" title="${h}:00 — ${count} messages"></div>`;
+      bars += `<div class="peak-bar" style="height:${Math.max(pct, 2)}%" title="${esc(String(h))}:00 — ${count} messages"></div>`;
       labels += `<div class="peak-label">${h % 6 === 0 ? h : ""}</div>`;
     }
     content += `<div class="label" style="margin-top:.75rem">Peak Hours</div>
@@ -2648,19 +2682,39 @@ if (cliArgs.open) {
 if (cliArgs.watch) {
   if (!cliArgs.quiet) console.log("Watching for changes...");
   let debounce = null;
+  let regenerating = false;
   const watchDirs = [CLAUDE_DIR, ...scanRoots.slice(0, 5)];
-  function regenerate() {
+
+  // Forward original flags minus --watch to avoid nested watchers
+  const forwardedArgs = process.argv
+    .slice(2)
+    .filter((a) => a !== "--watch")
+    .concat(["--quiet"]);
+
+  // Resolve output path to detect and ignore self-writes
+  const resolvedOutput = join(dirname(outputPath), basename(outputPath));
+
+  function regenerate(_eventType, filename) {
+    // Ignore changes to our own output file to prevent infinite loops
+    if (
+      filename &&
+      (filename === basename(resolvedOutput) || filename === "dashboard-snapshot.json")
+    )
+      return;
+    if (regenerating) return;
     if (debounce) globalThis.clearTimeout(debounce);
     debounce = globalThis.setTimeout(() => {
+      regenerating = true;
       if (!cliArgs.quiet) console.log("Change detected, regenerating...");
       try {
-        execFileSync(process.execPath, [process.argv[1], "--output", outputPath, "--quiet"], {
+        execFileSync(process.execPath, [process.argv[1], ...forwardedArgs], {
           stdio: "inherit",
         });
         if (!cliArgs.quiet) console.log(outputPath);
       } catch (e) {
         console.error("Regeneration failed:", e.message);
       }
+      regenerating = false;
     }, 500);
   }
   for (const dir of watchDirs) {
