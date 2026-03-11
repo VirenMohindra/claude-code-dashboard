@@ -749,10 +749,9 @@ describe("computeDrift()", () => {
 
 // ── Cross-Repo Suggestions ──────────────────────────────────────────────────
 
-// NOTE: The production findExemplar uses repo objects with .techStack (array)
-// and .healthScore (number). The production generateSuggestions uses
-// repo objects with .commands (array) and .rules (array), while this test
-// version uses .commandCount and .ruleCount (numbers) for simplicity.
+// NOTE: These must match the production functions in generate-dashboard.mjs.
+// The only divergence is that production reads from the filesystem (repo objects
+// built during scanning), while tests pass pre-built objects directly.
 function findExemplar(stack, configuredRepos) {
   if (!stack || stack.length === 0) return null;
   let best = null;
@@ -760,8 +759,9 @@ function findExemplar(stack, configuredRepos) {
   for (const repo of configuredRepos) {
     const repoStacks = repo.techStack || [];
     const overlap = stack.filter((s) => repoStacks.includes(s)).length;
-    if (overlap > 0 && (repo.healthScore || 0) > bestScore) {
-      bestScore = repo.healthScore || 0;
+    const score = overlap * 100 + (repo.healthScore || 0);
+    if (overlap > 0 && score > bestScore) {
+      bestScore = score;
       best = repo;
     }
   }
@@ -772,10 +772,10 @@ function generateSuggestions(exemplar) {
   if (!exemplar) return [];
   const suggestions = [];
   if (exemplar.hasAgentsFile) suggestions.push("add CLAUDE.md");
-  if (exemplar.commandCount > 0)
-    suggestions.push(`add commands (${exemplar.name} has ${exemplar.commandCount})`);
-  if (exemplar.ruleCount > 0)
-    suggestions.push(`add rules (${exemplar.name} has ${exemplar.ruleCount})`);
+  if (exemplar.commands?.length > 0)
+    suggestions.push(`add commands (${exemplar.name} has ${exemplar.commands.length})`);
+  if (exemplar.rules?.length > 0)
+    suggestions.push(`add rules (${exemplar.name} has ${exemplar.rules.length})`);
   return suggestions;
 }
 
@@ -807,6 +807,15 @@ describe("findExemplar()", () => {
     const result = findExemplar(["next", "react"], repos);
     assert.equal(result.name, "app-a");
   });
+
+  it("prefers higher overlap over higher health", () => {
+    const reposWithOverlap = [
+      { name: "broad", techStack: ["next", "react", "node"], healthScore: 70 },
+      { name: "narrow", techStack: ["react"], healthScore: 95 },
+    ];
+    const result = findExemplar(["next", "react", "node"], reposWithOverlap);
+    assert.equal(result.name, "broad");
+  });
 });
 
 describe("generateSuggestions()", () => {
@@ -814,12 +823,12 @@ describe("generateSuggestions()", () => {
     const result = generateSuggestions({
       name: "salsa",
       hasAgentsFile: true,
-      commandCount: 2,
-      ruleCount: 3,
+      commands: [{ name: "test" }, { name: "lint" }],
+      rules: [{ name: "style" }, { name: "arch" }, { name: "security" }],
     });
     assert.ok(result.includes("add CLAUDE.md"));
-    assert.ok(result.some((s) => s.includes("commands")));
-    assert.ok(result.some((s) => s.includes("rules")));
+    assert.ok(result.some((s) => s.includes("commands") && s.includes("2")));
+    assert.ok(result.some((s) => s.includes("rules") && s.includes("3")));
   });
 
   it("returns empty for null exemplar", () => {
@@ -830,8 +839,8 @@ describe("generateSuggestions()", () => {
     const result = generateSuggestions({
       name: "minimal",
       hasAgentsFile: true,
-      commandCount: 0,
-      ruleCount: 0,
+      commands: [],
+      rules: [],
     });
     assert.equal(result.length, 1);
     assert.equal(result[0], "add CLAUDE.md");
@@ -841,8 +850,8 @@ describe("generateSuggestions()", () => {
     const result = generateSuggestions({
       name: "bare",
       hasAgentsFile: false,
-      commandCount: 0,
-      ruleCount: 0,
+      commands: [],
+      rules: [],
     });
     assert.deepEqual(result, []);
   });

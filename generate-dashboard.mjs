@@ -648,8 +648,9 @@ function findExemplar(stack, configuredRepos) {
   for (const repo of configuredRepos) {
     const repoStacks = repo.techStack || [];
     const overlap = stack.filter((s) => repoStacks.includes(s)).length;
-    if (overlap > 0 && (repo.healthScore || 0) > bestScore) {
-      bestScore = repo.healthScore || 0;
+    const score = overlap * 100 + (repo.healthScore || 0);
+    if (overlap > 0 && score > bestScore) {
+      bestScore = score;
       best = repo;
     }
   }
@@ -769,6 +770,7 @@ for (const repoDir of allRepoPaths) {
     });
     repo.healthScore = health.score;
     repo.healthReasons = health.reasons;
+    repo.hasAgentsFile = !!agentsFile;
 
     // Drift detection
     const drift = computeDrift(repoDir, repo.freshness);
@@ -913,6 +915,7 @@ if (cliArgs.json) {
 }
 
 // ── Catalog Output (short-circuit before main HTML) ─────────────────────────
+// Note: --json takes precedence over --catalog if both are passed
 
 if (cliArgs.catalog) {
   const groups = groupSkillsByCategory(globalSkills);
@@ -1323,8 +1326,8 @@ const html = `<!DOCTYPE html>
 
   .unconfigured-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: .4rem; }
   @media (max-width: 900px) { .unconfigured-grid { grid-template-columns: repeat(2, 1fr); } }
-  .unconfigured-item { font-size: .72rem; padding: .3rem .5rem; border-radius: 4px; background: var(--surface2); color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .unconfigured-item .upath { font-size: .6rem; color: #555; display: block; overflow: hidden; text-overflow: ellipsis; }
+  .unconfigured-item { font-size: .72rem; padding: .3rem .5rem; border-radius: 4px; background: var(--surface2); color: var(--text-dim); }
+  .unconfigured-item .upath { font-size: .6rem; color: #555; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .suggestion-hints { display: flex; flex-wrap: wrap; gap: .2rem; margin-top: .25rem; }
   .suggestion-hint { font-size: .5rem; padding: .08rem .3rem; border-radius: 2px; background: rgba(96,165,250,.08); border: 1px solid rgba(96,165,250,.15); color: var(--blue); }
 
