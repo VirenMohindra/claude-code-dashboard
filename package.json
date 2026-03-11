@@ -1,6 +1,6 @@
 {
   "name": "claude-code-dashboard",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A visual dashboard for your Claude Code configuration across all repos",
   "type": "module",
   "bin": {

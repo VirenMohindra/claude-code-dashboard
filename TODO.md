@@ -29,26 +29,26 @@
 - [x] `--json` flag: dump full data model (repos, commands, rules, skills, chains, stats) as JSON
 - [ ] Enables downstream tooling: VS Code extensions, web dashboards, CI integrations, team reports
 
-## v0.3.0 — Recommendations Engine
+## v0.3.0 — Recommendations Engine (complete)
 
 ### Per-Repo Recommendations
 
-- [ ] Detect tech stack per repo (package.json framework, Cargo.toml, go.mod, requirements.txt, etc.)
+- [x] Detect tech stack per repo (package.json framework, Cargo.toml, go.mod, requirements.txt, etc.)
 - [ ] Compare unconfigured repos against best-configured repos with same stack
 - [ ] Generate "suggested config" per repo: "this is a Next.js repo — based on superapp/mockly, consider adding: architecture rules, test commands"
-- [ ] Show recommendation count in unconfigured repos section (not just names)
+- [x] Show tech stack in unconfigured repos section (not just names)
 
 ### Config Health Score
 
-- [ ] Score each repo's config completeness (0-100): has CLAUDE.md? modular rules? commands? description? freshness?
-- [ ] Show score as a small bar or ring in each repo card
-- [ ] Surface "quick wins": repos 1 step away from full config (e.g. "has CLAUDE.md but no commands")
+- [x] Score each repo's config completeness (0-100): has CLAUDE.md? modular rules? commands? description? freshness?
+- [x] Show score as a small bar in each repo card
+- [x] Surface "quick wins": repos 1 step away from full config (e.g. "has CLAUDE.md but no commands")
 
 ### Drift Detection
 
-- [ ] Compare config freshness against repo activity (commits since last config update)
-- [ ] Flag repos where config is stale relative to code churn: "sprout-kit-ui config is 45d old but 12 commits have landed"
-- [ ] Show drift indicator on repo cards (separate from freshness dot)
+- [x] Compare config freshness against repo activity (commits since last config update)
+- [x] Flag repos where config is stale relative to code churn: "superapp config is 1mo old but 46 commits have landed"
+- [x] Show drift indicator on repo cards (separate from freshness dot)
 
 ## v0.4.0 — Config Templates & Onboarding
 
