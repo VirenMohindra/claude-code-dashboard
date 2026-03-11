@@ -1,7 +1,7 @@
 import { join } from "path";
 import { homedir } from "os";
 
-export const VERSION = "0.0.1";
+export const VERSION = "0.0.2";
 
 export const HOME = homedir();
 export const CLAUDE_DIR = join(HOME, ".claude");
