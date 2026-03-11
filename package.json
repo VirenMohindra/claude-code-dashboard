@@ -1,6 +1,6 @@
 {
   "name": "@viren/claude-code-dashboard",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "A visual dashboard for your Claude Code configuration across all repos",
   "type": "module",
   "bin": {

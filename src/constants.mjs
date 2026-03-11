@@ -1,7 +1,7 @@
 import { join } from "path";
 import { homedir } from "os";
 
-export const VERSION = "0.0.3";
+export const VERSION = "0.0.4";
 export const REPO_URL = "https://github.com/VirenMohindra/claude-code-dashboard";
 
 export const HOME = homedir();
