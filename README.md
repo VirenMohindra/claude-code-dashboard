@@ -212,6 +212,16 @@ If no directories are listed, the entire home directory is scanned (depth 5).
 - Node.js 18+
 - Git (for freshness timestamps and drift detection)
 
+## Roadmap
+
+Completed: v0.1 (foundation), v0.2 (intelligence layer), v0.3 (recommendations engine), v0.4 (config templates), v0.5 (control center).
+
+**Up next:**
+
+- [ ] Org-wide dashboard — scan multiple users' configs for team visibility
+
+See [issues](https://github.com/VirenMohindra/claude-code-dashboard/issues) for feature requests.
+
 ## Privacy
 
 The generated HTML file contains:
