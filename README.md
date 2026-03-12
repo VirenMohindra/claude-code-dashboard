@@ -12,7 +12,7 @@ npx @viren/claude-code-dashboard --open
 
 **[Live Demo](https://virenmohindra.me/claude-code-dashboard/)**
 
-![Home — actionable insights and recommendations](screenshots/01-home.png)
+![Home — actionable insights and recommendations](https://raw.githubusercontent.com/VirenMohindra/claude-code-dashboard/main/screenshots/01-home.png)
 
 ## What it does
 
@@ -25,19 +25,19 @@ The **Home** tab tells you what needs attention — config drift, recommended MC
 
 ### Config — commands, rules, skills, MCP servers
 
-![Config](screenshots/02-config.png)
+![Config](https://raw.githubusercontent.com/VirenMohindra/claude-code-dashboard/main/screenshots/02-config.png)
 
 ### Analytics — tools, languages, activity heatmap, cost
 
-![Analytics](screenshots/03-analytics.png)
+![Analytics](https://raw.githubusercontent.com/VirenMohindra/claude-code-dashboard/main/screenshots/03-analytics.png)
 
 ### Repos — searchable grid with health scores
 
-![Repos](screenshots/04-repos.png)
+![Repos](https://raw.githubusercontent.com/VirenMohindra/claude-code-dashboard/main/screenshots/04-repos.png)
 
 ### Light mode
 
-![Light mode](screenshots/05-light-mode.png)
+![Light mode](https://raw.githubusercontent.com/VirenMohindra/claude-code-dashboard/main/screenshots/05-light-mode.png)
 
 </details>
 
