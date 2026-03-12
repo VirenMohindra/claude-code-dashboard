@@ -1,6 +1,6 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync, statSync } from "fs";
 import { join } from "path";
-import { MAX_SESSION_SCAN } from "./constants.mjs";
+import { MAX_SESSION_SCAN, MCP_REGISTRY_URL, MCP_REGISTRY_TTL_MS, CLAUDE_DIR } from "./constants.mjs";
 
 export function parseUserMcpConfig(content) {
   try {
@@ -174,4 +174,88 @@ export function classifyHistoricalServers(
   recent.sort((a, b) => a.name.localeCompare(b.name));
   former.sort((a, b) => a.name.localeCompare(b.name));
   return { recent, former };
+}
+
+/**
+ * Pure normalizer: extract claude-code compatible servers from raw registry API response.
+ * Returns [] on any malformed input.
+ */
+export function normalizeRegistryResponse(raw) {
+  try {
+    if (!raw || !Array.isArray(raw.servers)) return [];
+    return raw.servers
+      .map((entry) => {
+        // The registry API nests data: entry.server has the MCP spec fields,
+        // entry._meta["com.anthropic.api/mcp-registry"] has Anthropic's curated metadata.
+        // Also support flat shape (used in tests and demo data).
+        const anth = entry?._meta?.["com.anthropic.api/mcp-registry"] || {};
+        const srv = entry?.server || entry || {};
+        const name = anth.displayName || entry.name || srv.title || "";
+        return {
+          name,
+          slug: anth.slug || entry.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
+          description: anth.oneLiner || entry.description || srv.description || "",
+          url: anth.url || entry.url || "",
+          installCommand: anth.claudeCodeCopyText || entry.installCommand || "",
+          worksWith: anth.worksWith || entry.worksWith || [],
+          tools: anth.toolNames || entry.tools || [],
+        };
+      })
+      .filter((s) => Array.isArray(s.worksWith) && s.worksWith.includes("claude-code"));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Fetch MCP registry servers with 24h file cache.
+ * Falls back to stale cache on network failure, returns [] on total failure.
+ */
+export async function fetchRegistryServers() {
+  const cachePath = join(CLAUDE_DIR, "mcp-registry-cache.json");
+
+  // Try fresh cache
+  try {
+    const cached = JSON.parse(readFileSync(cachePath, "utf8"));
+    if (cached._ts && Date.now() - cached._ts < MCP_REGISTRY_TTL_MS) {
+      return normalizeRegistryResponse(cached.data);
+    }
+  } catch {
+    /* no cache or unreadable */
+  }
+
+  // Fetch from registry
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(MCP_REGISTRY_URL, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const normalized = normalizeRegistryResponse(data);
+
+    // Only cache valid responses to avoid 24h blackout on malformed data
+    if (Array.isArray(data?.servers) && data.servers.length > 0) {
+      try {
+        writeFileSync(cachePath, JSON.stringify({ _ts: Date.now(), data }));
+      } catch {
+        /* non-critical */
+      }
+    }
+
+    return normalized;
+  } catch {
+    /* network failure — try stale cache */
+  }
+
+  // Stale cache fallback (ignore TTL)
+  try {
+    const cached = JSON.parse(readFileSync(cachePath, "utf8"));
+    return normalizeRegistryResponse(cached.data);
+  } catch {
+    /* total failure */
+  }
+
+  return [];
 }

@@ -458,6 +458,83 @@ const DEMO_INSIGHTS_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
+// ── MCP Registry servers ──────────────────────────────────────────────────────
+
+const DEMO_REGISTRY_SERVERS = [
+  {
+    name: "Vercel",
+    slug: "vercel",
+    description: "Analyze, debug, and manage projects and deployments",
+    url: "https://mcp.vercel.com/",
+    installCommand: "claude mcp add --transport http vercel https://mcp.vercel.com",
+    worksWith: ["claude", "claude-api", "claude-code"],
+    tools: ["list_projects", "get_deployment"],
+  },
+  {
+    name: "Supabase",
+    slug: "supabase",
+    description: "Manage databases, authentication, and storage",
+    url: "https://mcp.supabase.com/mcp",
+    installCommand: "claude mcp add --transport http supabase https://mcp.supabase.com/mcp",
+    worksWith: ["claude", "claude-api", "claude-code"],
+    tools: ["execute_sql", "generate_typescript_types"],
+  },
+  {
+    name: "Stripe",
+    slug: "stripe",
+    description: "Payment processing and financial infrastructure tools",
+    url: "https://mcp.stripe.com",
+    installCommand: "claude mcp add --transport http stripe https://mcp.stripe.com",
+    worksWith: ["claude", "claude-api", "claude-code"],
+    tools: ["create_customer", "create_payment_link"],
+  },
+  {
+    name: "Linear",
+    slug: "linear",
+    description: "Manage issues, projects & team workflows in Linear",
+    url: "https://mcp.linear.app/mcp",
+    installCommand: "claude mcp add --transport http linear https://mcp.linear.app/mcp",
+    worksWith: ["claude", "claude-api", "claude-code"],
+    tools: ["create_issue", "update_issue"],
+  },
+  {
+    name: "Notion",
+    slug: "notion",
+    description: "Create, edit, search and organize Notion content",
+    url: "https://mcp.notion.com/mcp",
+    installCommand: "claude mcp add --transport http notion https://mcp.notion.com/mcp",
+    worksWith: ["claude", "claude-api", "claude-code"],
+    tools: ["search", "create-pages"],
+  },
+  {
+    name: "Atlassian",
+    slug: "atlassian",
+    description: "Access Jira & Confluence from Claude",
+    url: "https://mcp.atlassian.com/v1/mcp",
+    installCommand: "claude mcp add --transport http atlassian https://mcp.atlassian.com/v1/mcp",
+    worksWith: ["claude", "claude-code"],
+    tools: ["getJiraIssue", "createJiraIssue"],
+  },
+  {
+    name: "Slack",
+    slug: "slack",
+    description: "Send messages, create canvases, and fetch Slack data",
+    url: "https://mcp.slack.com/mcp",
+    installCommand: "claude mcp add --transport http slack-remote https://mcp.slack.com/mcp",
+    worksWith: ["claude", "claude-api", "claude-code"],
+    tools: ["slack_send_message", "slack_search_public_and_private"],
+  },
+  {
+    name: "Context7",
+    slug: "context7",
+    description: "Up-to-date docs for LLMs and AI code editors",
+    url: "https://mcp.context7.com/mcp",
+    installCommand: "claude mcp add --transport http context7 https://mcp.context7.com/mcp",
+    worksWith: ["claude", "claude-api", "claude-code"],
+    tools: ["resolve-library-id", "query-docs"],
+  },
+];
+
 // ── Main export ──────────────────────────────────────────────────────────────
 
 export function generateDemoRawInputs() {
@@ -473,6 +550,7 @@ export function generateDemoRawInputs() {
     projectMcpByRepo,
     disabledMcpByRepo,
     historicalMcpMap,
+    registryServers: DEMO_REGISTRY_SERVERS,
     sessionMetaFiles: buildDemoSessionMeta(),
     ccusageData: {
       totals: { totalCost: 47.82, totalTokens: 28_450_000 },

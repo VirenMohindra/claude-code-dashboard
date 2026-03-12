@@ -6,7 +6,7 @@
  * All data comes in via the `raw` parameter.
  */
 
-import { SIMILARITY_THRESHOLD } from "./constants.mjs";
+import { SIMILARITY_THRESHOLD, MCP_STACK_HINTS } from "./constants.mjs";
 import { relativeTime, freshnessClass } from "./freshness.mjs";
 import {
   computeHealthScore,
@@ -222,6 +222,84 @@ export function buildDashboardData(raw) {
   });
   const mcpCount = mcpSummary.length;
 
+  // ── 3b. MCP Registry — Available & Recommended ────────────────────────
+
+  const registryServers = raw.registryServers || [];
+  const registryTotal = registryServers.length;
+
+  // Build a set of installed server identifiers (lowercase names)
+  // Use mcpSummary which includes user, project, AND recently-active servers
+  const installedIds = new Set();
+  for (const s of mcpSummary) {
+    installedIds.add(s.name.toLowerCase());
+  }
+
+  // Filter out already-installed servers
+  const notInstalled = registryServers.filter(
+    (s) => !installedIds.has((s.slug || "").toLowerCase()) && !installedIds.has((s.name || "").toLowerCase()),
+  );
+
+  // Collect tech stacks and description text from all repos
+  const allRepos = [...configured, ...unconfigured];
+  const stackCounts = {}; // key -> count of repos with that stack
+  for (const repo of allRepos) {
+    for (const stack of repo.techStack || []) {
+      const k = stack.toLowerCase();
+      stackCounts[k] = (stackCounts[k] || 0) + 1;
+    }
+  }
+
+  // Join all descriptions into a single lowercased string for substring matching
+  // (supports multi-word keys like "hugging face")
+  const allDescText = allRepos
+    .flatMap((r) => r.desc || [])
+    .join(" ")
+    .toLowerCase();
+
+  // Match hints against stacks and descriptions
+  const recommendedSlugs = new Map(); // slug -> { reasons: [], matchCount: 0 }
+  for (const [key, slugs] of Object.entries(MCP_STACK_HINTS)) {
+    const stackCount = stackCounts[key] || 0;
+    const inDesc = allDescText.includes(key);
+
+    if (stackCount > 0 || inDesc) {
+      for (const slug of slugs) {
+        if (!recommendedSlugs.has(slug)) {
+          recommendedSlugs.set(slug, { reasons: [], matchCount: 0 });
+        }
+        const entry = recommendedSlugs.get(slug);
+        if (stackCount > 0) {
+          entry.reasons.push(`${stackCount} ${key} repo${stackCount > 1 ? "s" : ""} detected`);
+          entry.matchCount += stackCount;
+        }
+        if (inDesc) {
+          entry.reasons.push("mentioned in repo descriptions");
+          entry.matchCount += 1;
+        }
+      }
+    }
+  }
+
+  // Build recommended list from not-installed servers that match hints
+  const recommendedMcpServers = [];
+  const recommendedSlugSet = new Set();
+  for (const server of notInstalled) {
+    const slug = (server.slug || "").toLowerCase();
+    if (recommendedSlugs.has(slug)) {
+      const { reasons, matchCount } = recommendedSlugs.get(slug);
+      recommendedMcpServers.push({ ...server, reasons, matchCount });
+      recommendedSlugSet.add(slug);
+    }
+  }
+
+  // Sort by relevance (more match signals first)
+  recommendedMcpServers.sort((a, b) => b.matchCount - a.matchCount || a.name.localeCompare(b.name));
+
+  // Available = not-installed minus recommended
+  const availableMcpServers = notInstalled.filter(
+    (s) => !recommendedSlugSet.has((s.slug || "").toLowerCase()),
+  );
+
   // ── 4. Usage Analytics ────────────────────────────────────────────────
 
   const usageAnalytics = aggregateSessionMeta(raw.sessionMetaFiles || []);
@@ -406,6 +484,19 @@ export function buildDashboardData(raw) {
     });
   }
 
+  // MCP recommendations
+  if (recommendedMcpServers.length > 0) {
+    insights.push({
+      type: "tip",
+      title: `${recommendedMcpServers.length} MCP server${recommendedMcpServers.length > 1 ? "s" : ""} recommended for your repos`,
+      detail: recommendedMcpServers
+        .slice(0, 3)
+        .map((s) => `${s.name} (${s.reasons.join(", ")})`)
+        .join(", "),
+      action: "Check the Skills & MCP tab for install commands",
+    });
+  }
+
   // Skill sharing opportunities
   const skillMatchCounts = {};
   for (const r of configured) {
@@ -493,6 +584,9 @@ export function buildDashboardData(raw) {
     avgHealth,
     driftCount,
     mcpCount,
+    recommendedMcpServers,
+    availableMcpServers,
+    registryTotal,
     scanScope: raw.scanScope,
     insights,
     insightsReport,

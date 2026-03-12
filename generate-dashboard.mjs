@@ -43,7 +43,12 @@ import {
   computeDashboardDiff,
 } from "./src/analysis.mjs";
 import { getFreshness } from "./src/freshness.mjs";
-import { parseUserMcpConfig, parseProjectMcpConfig, scanHistoricalMcpServers } from "./src/mcp.mjs";
+import {
+  parseUserMcpConfig,
+  parseProjectMcpConfig,
+  scanHistoricalMcpServers,
+  fetchRegistryServers,
+} from "./src/mcp.mjs";
 import { handleInit } from "./src/templates.mjs";
 import { generateCatalogHtml } from "./src/render.mjs";
 import { generateDashboardHtml } from "./src/assembler.mjs";
@@ -87,7 +92,7 @@ if (cliArgs.demo) {
 
 // ── Collect Raw Inputs ────────────────────────────────────────────────────────
 
-function collectRawInputs() {
+async function collectRawInputs() {
   const scanRoots = getScanRoots();
   const allRepoPaths = findGitRepos(scanRoots, MAX_DEPTH);
 
@@ -217,6 +222,9 @@ function collectRawInputs() {
     entry.projects = new Set([...entry.projects].map((p) => shortPath(p)));
   }
 
+  // MCP Registry servers
+  const registryServers = cliArgs.offline ? [] : await fetchRegistryServers();
+
   // Usage data — session meta files
   const SESSION_META_LIMIT = 1000;
   const sessionMetaDir = join(CLAUDE_DIR, "usage-data", "session-meta");
@@ -309,6 +317,7 @@ function collectRawInputs() {
     projectMcpByRepo,
     disabledMcpByRepo,
     historicalMcpMap,
+    registryServers,
     sessionMetaFiles,
     ccusageData,
     statsCache,
@@ -321,7 +330,7 @@ function collectRawInputs() {
 
 // ── Build Dashboard Data ─────────────────────────────────────────────────────
 
-const rawInputs = collectRawInputs();
+const rawInputs = await collectRawInputs();
 const data = buildDashboardData(rawInputs);
 
 // ── Lint Subcommand ──────────────────────────────────────────────────────────

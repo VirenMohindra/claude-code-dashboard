@@ -94,6 +94,9 @@ describe("generateDashboardHtml (assembler)", () => {
       mcpSummary: [],
       mcpPromotions: [],
       formerMcpServers: [],
+      recommendedMcpServers: [],
+      availableMcpServers: [],
+      registryTotal: 0,
       consolidationGroups: [],
       usageAnalytics: {
         topTools: [],
