@@ -102,6 +102,40 @@ export const MCP_REGISTRY_URL =
   "https://api.anthropic.com/mcp-registry/v0/servers?visibility=commercial&limit=100";
 export const MCP_REGISTRY_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
+/**
+ * Maps detected tech stacks and description keywords to relevant MCP server slugs.
+ * Used by the pipeline to compute MCP recommendations.
+ *
+ * Keys: tech stack names (matching STACK_FILES values) or lowercase keywords
+ * found in repo descriptions.
+ * Values: array of MCP server slugs from the Anthropic registry.
+ */
+export const MCP_STACK_HINTS = {
+  // Stack-based (keys match STACK_FILES values)
+  next: ["vercel", "figma"],
+  react: ["figma"],
+  python: ["sentry"],
+  go: ["sentry"],
+  rust: ["sentry"],
+  java: ["sentry"],
+  expo: ["figma"],
+
+  // Keyword-based (matched against lowercased repo descriptions)
+  supabase: ["supabase"],
+  stripe: ["stripe"],
+  vercel: ["vercel"],
+  sentry: ["sentry"],
+  notion: ["notion"],
+  linear: ["linear"],
+  jira: ["atlassian"],
+  confluence: ["atlassian"],
+  slack: ["slack"],
+  figma: ["figma"],
+  github: ["github"],
+  huggingface: ["hugging-face"],
+  "hugging face": ["hugging-face"],
+};
+
 export const CATEGORY_ORDER = [
   "workflow",
   "code-quality",
