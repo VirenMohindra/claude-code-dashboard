@@ -9,6 +9,10 @@ export default [
         process: "readonly",
         URL: "readonly",
         structuredClone: "readonly",
+        fetch: "readonly",
+        AbortController: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
       },
     },
     rules: {
