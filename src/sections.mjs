@@ -107,10 +107,8 @@ export function renderMcpCard(
       ? `<div class="mcp-registry-note">${registryTotal} servers in registry</div>`
       : "";
 
-  const totalCount = mcpSummary.length + recommendedMcpServers.length + availableMcpServers.length;
-
   return `<div class="card" id="section-mcp">
-  <h2>MCP Servers <span class="n">${totalCount}</span></h2>
+  <h2>MCP Servers <span class="n">${mcpSummary.length}</span></h2>
   ${rows}
   ${promoteHtml}
   ${formerHtml}

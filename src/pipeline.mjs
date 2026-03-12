@@ -239,41 +239,38 @@ export function buildDashboardData(raw) {
     (s) => !installedIds.has((s.slug || "").toLowerCase()) && !installedIds.has((s.name || "").toLowerCase()),
   );
 
-  // Collect tech stacks from all repos
-  const allStacks = new Set();
-  for (const repo of [...configured, ...unconfigured]) {
+  // Collect tech stacks and description text from all repos
+  const allRepos = [...configured, ...unconfigured];
+  const stackCounts = {}; // key -> count of repos with that stack
+  for (const repo of allRepos) {
     for (const stack of repo.techStack || []) {
-      allStacks.add(stack.toLowerCase());
+      const k = stack.toLowerCase();
+      stackCounts[k] = (stackCounts[k] || 0) + 1;
     }
   }
 
-  // Collect description words from all repos
-  const descWords = new Set();
-  for (const repo of [...configured, ...unconfigured]) {
-    for (const line of repo.desc || []) {
-      for (const word of line.toLowerCase().split(/\s+/)) {
-        descWords.add(word);
-      }
-    }
-  }
+  // Join all descriptions into a single lowercased string for substring matching
+  // (supports multi-word keys like "hugging face")
+  const allDescText = allRepos
+    .flatMap((r) => r.desc || [])
+    .join(" ")
+    .toLowerCase();
 
   // Match hints against stacks and descriptions
   const recommendedSlugs = new Map(); // slug -> { reasons: [], matchCount: 0 }
   for (const [key, slugs] of Object.entries(MCP_STACK_HINTS)) {
-    const stackMatches = [...configured, ...unconfigured].filter((r) =>
-      (r.techStack || []).some((s) => s.toLowerCase() === key),
-    );
-    const inDesc = descWords.has(key);
+    const stackCount = stackCounts[key] || 0;
+    const inDesc = allDescText.includes(key);
 
-    if (stackMatches.length > 0 || inDesc) {
+    if (stackCount > 0 || inDesc) {
       for (const slug of slugs) {
         if (!recommendedSlugs.has(slug)) {
           recommendedSlugs.set(slug, { reasons: [], matchCount: 0 });
         }
         const entry = recommendedSlugs.get(slug);
-        if (stackMatches.length > 0) {
-          entry.reasons.push(`${stackMatches.length} ${key} repo${stackMatches.length > 1 ? "s" : ""} detected`);
-          entry.matchCount += stackMatches.length;
+        if (stackCount > 0) {
+          entry.reasons.push(`${stackCount} ${key} repo${stackCount > 1 ? "s" : ""} detected`);
+          entry.matchCount += stackCount;
         }
         if (inDesc) {
           entry.reasons.push("mentioned in repo descriptions");

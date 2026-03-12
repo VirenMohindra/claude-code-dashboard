@@ -175,6 +175,8 @@ document.addEventListener("click", function (e) {
     setTimeout(function () {
       install.textContent = orig;
     }, 1500);
+  }).catch(function () {
+    /* clipboard unavailable (file:// protocol, permissions) */
   });
 });
 
