@@ -21,8 +21,15 @@ export function renderSkillsCard(globalSkills) {
 </div>`;
 }
 
-export function renderMcpCard(mcpSummary, mcpPromotions, formerMcpServers) {
-  if (!mcpSummary.length) return "";
+export function renderMcpCard(
+  mcpSummary,
+  mcpPromotions,
+  formerMcpServers,
+  recommendedMcpServers,
+  availableMcpServers,
+  registryTotal,
+) {
+  if (!mcpSummary.length && !recommendedMcpServers.length && !availableMcpServers.length) return "";
   const rows = mcpSummary
     .map((s) => {
       const disabledClass = s.disabledIn > 0 ? " mcp-disabled" : "";
@@ -62,11 +69,54 @@ export function renderMcpCard(mcpSummary, mcpPromotions, formerMcpServers) {
     })
     .join("\n    ")}`
     : "";
+  const recommendedHtml = recommendedMcpServers.length
+    ? `<details class="mcp-section"${recommendedMcpServers.length <= 5 ? " open" : ""}>
+    <summary class="label" style="cursor:pointer;margin-top:.75rem">Recommended <span class="cat-n">${recommendedMcpServers.length}</span></summary>
+    ${recommendedMcpServers
+      .map(
+        (s) =>
+          `<div class="mcp-recommended"><span class="mcp-name">${esc(s.name)}</span> <span class="mcp-rec-badge">recommended</span>` +
+          (s.description ? `<div class="mcp-desc">${esc(s.description)}</div>` : "") +
+          (s.reasons && s.reasons.length
+            ? `<div class="mcp-reason">${s.reasons.map((r) => esc(r)).join(", ")}</div>`
+            : "") +
+          (s.installCommand ? `<code class="mcp-install">${esc(s.installCommand)}</code>` : "") +
+          `</div>`,
+      )
+      .join("\n    ")}
+  </details>`
+    : "";
+
+  const availableHtml = availableMcpServers.length
+    ? `<details class="mcp-section">
+    <summary class="label" style="cursor:pointer;margin-top:.75rem">Available <span class="cat-n">${availableMcpServers.length}</span></summary>
+    ${availableMcpServers
+      .map(
+        (s) =>
+          `<div class="mcp-available"><span class="mcp-name">${esc(s.name)}</span>` +
+          (s.description ? `<div class="mcp-desc">${esc(s.description)}</div>` : "") +
+          (s.installCommand ? `<code class="mcp-install">${esc(s.installCommand)}</code>` : "") +
+          `</div>`,
+      )
+      .join("\n    ")}
+  </details>`
+    : "";
+
+  const registryNote =
+    registryTotal > 0
+      ? `<div class="mcp-registry-note">${registryTotal} servers in registry</div>`
+      : "";
+
+  const totalCount = mcpSummary.length + recommendedMcpServers.length + availableMcpServers.length;
+
   return `<div class="card" id="section-mcp">
-  <h2>MCP Servers <span class="n">${mcpSummary.length}</span></h2>
+  <h2>MCP Servers <span class="n">${totalCount}</span></h2>
   ${rows}
   ${promoteHtml}
   ${formerHtml}
+  ${recommendedHtml}
+  ${availableHtml}
+  ${registryNote}
 </div>`;
 }
 

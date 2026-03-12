@@ -165,6 +165,19 @@ if (refreshBtn) {
   });
 }
 
+// ── Click-to-copy MCP install commands ───────────────────
+document.addEventListener("click", function (e) {
+  var install = e.target.closest(".mcp-install");
+  if (!install) return;
+  navigator.clipboard.writeText(install.textContent).then(function () {
+    var orig = install.textContent;
+    install.textContent = "copied!";
+    setTimeout(function () {
+      install.textContent = orig;
+    }, 1500);
+  });
+});
+
 // Custom tooltip for heatmap cells and peak bars
 var tip = document.getElementById("chart-tooltip");
 document.addEventListener("mouseover", function (e) {

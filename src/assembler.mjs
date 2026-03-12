@@ -47,6 +47,9 @@ export function generateDashboardHtml(data) {
     mcpSummary,
     mcpPromotions,
     formerMcpServers,
+    recommendedMcpServers,
+    availableMcpServers,
+    registryTotal,
     consolidationGroups,
     usageAnalytics,
     ccusageData,
@@ -90,7 +93,7 @@ export function generateDashboardHtml(data) {
   const tabOverview = `${overviewCommands}\n  ${insightsHtml}\n  ${chainsHtml}\n  ${consolidationHtml}`;
 
   // Skills & MCP tab
-  const tabSkillsMcp = `${renderSkillsCard(globalSkills)}\n  ${renderMcpCard(mcpSummary, mcpPromotions, formerMcpServers)}`;
+  const tabSkillsMcp = `${renderSkillsCard(globalSkills)}\n  ${renderMcpCard(mcpSummary, mcpPromotions, formerMcpServers, recommendedMcpServers, availableMcpServers, registryTotal)}`;
 
   // Analytics tab
   const insightsReportHtml = renderInsightsReportCard(insightsReport);
