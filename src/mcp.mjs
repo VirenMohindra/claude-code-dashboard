@@ -1,7 +1,6 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync, statSync } from "fs";
 import { join } from "path";
-import { homedir } from "os";
-import { MAX_SESSION_SCAN, MCP_REGISTRY_URL, MCP_REGISTRY_TTL_MS } from "./constants.mjs";
+import { MAX_SESSION_SCAN, MCP_REGISTRY_URL, MCP_REGISTRY_TTL_MS, CLAUDE_DIR } from "./constants.mjs";
 
 export function parseUserMcpConfig(content) {
   try {
@@ -187,11 +186,11 @@ export function normalizeRegistryResponse(raw) {
     return raw.servers
       .filter((s) => Array.isArray(s.worksWith) && s.worksWith.includes("claude-code"))
       .map((s) => ({
-        name: s.name,
-        slug: s.slug,
-        description: s.description,
-        url: s.url,
-        installCommand: s.installCommand,
+        name: s.name || "",
+        slug: s.slug || "",
+        description: s.description || "",
+        url: s.url || "",
+        installCommand: s.installCommand || "",
         worksWith: s.worksWith,
         tools: s.tools || [],
       }));
@@ -205,7 +204,7 @@ export function normalizeRegistryResponse(raw) {
  * Falls back to stale cache on network failure, returns [] on total failure.
  */
 export async function fetchRegistryServers() {
-  const cachePath = join(homedir(), ".claude", "mcp-registry-cache.json");
+  const cachePath = join(CLAUDE_DIR, "mcp-registry-cache.json");
 
   // Try fresh cache
   try {
@@ -228,11 +227,13 @@ export async function fetchRegistryServers() {
     const data = await res.json();
     const normalized = normalizeRegistryResponse(data);
 
-    // Write cache
-    try {
-      writeFileSync(cachePath, JSON.stringify({ _ts: Date.now(), data }));
-    } catch {
-      /* non-critical */
+    // Only cache valid responses to avoid 24h blackout on malformed data
+    if (Array.isArray(data?.servers) && data.servers.length > 0) {
+      try {
+        writeFileSync(cachePath, JSON.stringify({ _ts: Date.now(), data }));
+      } catch {
+        /* non-critical */
+      }
     }
 
     return normalized;
