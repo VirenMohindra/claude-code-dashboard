@@ -3,98 +3,43 @@
 [![npm version](https://img.shields.io/npm/v/@viren/claude-code-dashboard)](https://www.npmjs.com/package/@viren/claude-code-dashboard)
 [![CI](https://github.com/VirenMohindra/claude-code-dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/VirenMohindra/claude-code-dashboard/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org)
 
-A visual dashboard for your [Claude Code](https://docs.anthropic.com/en/docs/claude-code) configuration across all repos.
+See everything about your [Claude Code](https://docs.anthropic.com/en/docs/claude-code) setup in one place — what's configured, what's drifting, and what to do next.
+
+```sh
+npx @viren/claude-code-dashboard --open
+```
 
 **[Live Demo](https://virenmohindra.me/claude-code-dashboard/)**
 
-Scans your home directory for git repos, collects Claude Code configuration (commands, rules, skills, MCP servers, usage data), and generates a self-contained HTML dashboard.
+![Home — actionable insights and recommendations](screenshots/01-home.png)
 
-## Screenshots
+## What it does
 
-### Dashboard overview — stats, global commands, and rules
+Scans your machine for git repos, collects all Claude Code configuration (commands, rules, skills, MCP servers, usage data), and generates a self-contained HTML dashboard. No server, no account, no dependencies.
 
-![Overview](screenshots/01-overview.png)
+The **Home** tab tells you what needs attention — config drift, recommended MCP servers, quick wins. The **Config** tab shows your full setup. **Analytics** visualizes how you use Claude Code. **Repos** gives a searchable grid of every project.
 
-### Skills with auto-categorization and MCP server discovery
+<details>
+<summary>More screenshots</summary>
 
-![Skills and MCP](screenshots/02-skills-mcp.png)
+### Config — commands, rules, skills, MCP servers
 
-### Usage analytics — tool usage, languages, activity heatmap
+![Config](screenshots/02-config.png)
 
-![Usage Analytics](screenshots/03-usage-analytics.png)
+### Analytics — tools, languages, activity heatmap, cost
 
-### Repo cards with search, grouping, and consolidation hints
+![Analytics](screenshots/03-analytics.png)
 
-![Repo Cards](screenshots/04-repo-cards.png)
+### Repos — searchable grid with health scores
 
-### Expanded repo — commands, rules, health score, matched skills
-
-![Repo Expanded](screenshots/05-repo-expanded.png)
+![Repos](screenshots/04-repos.png)
 
 ### Light mode
 
-![Light Mode](screenshots/06-light-mode.png)
+![Light mode](screenshots/05-light-mode.png)
 
-> Screenshots generated with `claude-code-dashboard --demo`
-
-## Features
-
-### Core
-
-- **Repo discovery** — finds all git repos under `$HOME` (or configured directories)
-- **Config coverage** — shows what percentage of your repos have Claude Code configuration
-- **Freshness indicators** — green/yellow/red dots showing how recently config was updated
-- **Expandable cards** — collapsed 3-column grid, click to expand full details
-- **Search** — filter repos by name, path, or content (`/` to focus, `Esc` to clear)
-- **Group by** — organize repos by tech stack or parent directory
-- **Light/dark mode** — toggle with system preference detection
-
-### Intelligence
-
-- **Health scores** — 0-100 config completeness score per repo with quick-win suggestions
-- **Tech stack detection** — auto-detects Next.js, React, Python, Go, Rust, Swift, Expo, etc.
-- **Drift detection** — flags repos where config is stale relative to code churn
-- **Config patterns** — detects modular, monolithic, command-heavy, or minimal styles
-- **Cross-repo similarity** — finds repos with similar configs for consolidation
-- **Repo-to-skill matching** — shows relevant skills per repo based on tech stack
-
-### Skills
-
-- **Skills dashboard** — scans `~/.claude/skills/` with source detection (superpowers, skills.sh, custom)
-- **Auto-categorization** — groups skills by type (workflow, debugging, research, etc.)
-- **Skill catalog** — shareable HTML page with install hints (`--catalog`)
-
-### MCP Servers
-
-- **MCP discovery** — scans `~/.claude/mcp_config.json` and per-repo `.mcp.json` files
-- **Promotion hints** — flags servers installed in 2+ projects but not globally
-- **Disabled server detection** — reads `~/.claude.json` for disabled servers
-- **Historical tracking** — shows former MCP servers no longer in use
-
-### Usage Analytics
-
-- **Activity heatmap** — GitHub-style daily activity grid
-- **Top tools & languages** — bar charts from session metadata
-- **Peak hours** — when you use Claude Code most
-- **Model usage & cost** — token breakdown by model (via [ccusage](https://github.com/ryoppippi/ccusage))
-
-### CLI
-
-- **Config templates** — `init` scaffolds CLAUDE.md based on your best existing configs
-- **Config linting** — `lint` detects TODO markers, missing CLAUDE.md, empty configs
-- **Watch mode** — `--watch` regenerates on file changes
-- **Diff view** — `--diff` shows what changed since last generation
-- **JSON export** — `--json` dumps the full data model for downstream tooling
-- **Anonymized export** — `--anonymize` replaces paths for safe sharing
-- **Shell completions** — `--completions` for bash/zsh
-
-### Other
-
-- **Dependency chains** — visualize repo relationships via config file
-- **Quick reference** — built-in card with slash commands, tools, and keyboard shortcuts
-- **Zero dependencies** — pure Node.js, no `npm install` required
+</details>
 
 ## Install
 
@@ -102,62 +47,27 @@ Scans your home directory for git repos, collects Claude Code configuration (com
 npm install -g @viren/claude-code-dashboard
 ```
 
-Or run directly:
-
-```sh
-npx @viren/claude-code-dashboard
-```
-
-Or clone and run:
-
-```sh
-git clone https://github.com/VirenMohindra/claude-code-dashboard.git
-node claude-code-dashboard/generate-dashboard.mjs
-```
+Or run directly with `npx @viren/claude-code-dashboard`.
 
 ## Usage
 
 ```sh
-# Generate dashboard (writes to ~/.claude/dashboard.html)
-claude-code-dashboard
-
 # Generate and open in browser
 claude-code-dashboard --open
 
-# Watch mode — regenerate on file changes
+# Watch mode — regenerate on config changes
 claude-code-dashboard --watch
 
-# Custom output path
-claude-code-dashboard --output ~/Desktop/dashboard.html
-
-# Export as JSON
-claude-code-dashboard --json
-
-# Generate skill catalog
-claude-code-dashboard --catalog
-
-# Show diff since last generation
-claude-code-dashboard --diff
-
-# Anonymize paths for sharing
-claude-code-dashboard --anonymize
-
-# Scaffold CLAUDE.md for current repo
+# Scaffold CLAUDE.md for the current repo
 claude-code-dashboard init
-
-# Preview without writing
-claude-code-dashboard init --dry-run
 
 # Lint all repo configs
 claude-code-dashboard lint
-
-# Shell completions
-claude-code-dashboard --completions >> ~/.zshrc
 ```
 
-### As a Claude Code slash command
+### As a slash command
 
-Create `~/.claude/commands/dashboard.md` with:
+Create `~/.claude/commands/dashboard.md`:
 
 <!-- prettier-ignore-start -->
 ```text
@@ -174,13 +84,30 @@ Generate and open the Claude Code configuration dashboard.
 
 Then run `/dashboard` from any Claude Code session.
 
+<details>
+<summary>All CLI flags</summary>
+
+```sh
+claude-code-dashboard --output ~/path.html   # Custom output path
+claude-code-dashboard --json                  # Export data as JSON
+claude-code-dashboard --catalog               # Generate shareable skill catalog
+claude-code-dashboard --diff                  # Show changes since last run
+claude-code-dashboard --anonymize             # Strip paths for safe sharing
+claude-code-dashboard --offline               # Skip MCP registry fetch
+claude-code-dashboard --demo                  # Generate with sample data
+claude-code-dashboard --completions >> ~/.zshrc  # Shell completions
+claude-code-dashboard init --dry-run          # Preview config scaffold
+```
+
+</details>
+
 ## Configuration
 
-Create `~/.claude/dashboard.conf` to customize behavior:
+Create `~/.claude/dashboard.conf` to control scanning:
 
 <!-- prettier-ignore-start -->
 ```text
-# Restrict scanning to specific directories (one per line):
+# Restrict to specific directories (one per line):
 ~/work
 ~/personal/repos
 
@@ -190,50 +117,22 @@ chain: backend <- shared-types
 ```
 <!-- prettier-ignore-end -->
 
-If no directories are listed, the entire home directory is scanned (depth 5).
+Without this file, the entire home directory is scanned (depth 5).
 
-## What it scans
+## Key features
 
-| Path                                 | What it shows                        |
-| ------------------------------------ | ------------------------------------ |
-| `CLAUDE.md` / `AGENTS.md`            | Project description, config sections |
-| `.claude/commands/*.md`              | Custom slash commands                |
-| `.claude/rules/*.md`                 | Custom rules                         |
-| `.mcp.json`                          | Project MCP server config            |
-| `package.json`                       | Tech stack detection                 |
-| `~/.claude/commands/*.md`            | Global commands                      |
-| `~/.claude/rules/*.md`               | Global rules                         |
-| `~/.claude/skills/*/SKILL.md`        | Skills (with source detection)       |
-| `~/.claude/mcp_config.json`          | Global MCP server config             |
-| `~/.claude.json`                     | Disabled MCP servers                 |
-| `~/.claude/usage-data/session-meta/` | Usage analytics                      |
-| `~/.claude/stats-cache.json`         | Activity heatmap data                |
-
-## Requirements
-
-- Node.js 18+
-- Git (for freshness timestamps and drift detection)
-
-## Roadmap
-
-Completed: v0.1 (foundation), v0.2 (intelligence layer), v0.3 (recommendations engine), v0.4 (config templates), v0.5 (control center).
-
-**Up next:**
-
-- [ ] Org-wide dashboard — scan multiple users' configs for team visibility
-
-See [issues](https://github.com/VirenMohindra/claude-code-dashboard/issues) for feature requests.
+- **Insights** — actionable findings with "copy as prompt" to paste directly into Claude Code
+- **Health scores** — 0-100 config completeness per repo with specific improvement suggestions
+- **MCP recommendations** — suggests servers from the Anthropic registry based on your tech stacks
+- **Drift detection** — flags repos where config hasn't been updated in many commits
+- **Tech stack detection** — auto-detects Next.js, React, Python, Go, Rust, Expo, etc.
+- **Usage analytics** — activity heatmap, top tools, peak hours, model costs (via [ccusage](https://github.com/ryoppippi/ccusage))
+- **Skill catalog** — shareable HTML page of your skills with install hints
+- **Zero dependencies** — pure Node.js 18+, no `npm install` required
 
 ## Privacy
 
-The generated HTML file contains:
-
-- Filesystem paths (shortened with `~`)
-- Preview lines from your `CLAUDE.md` / `AGENTS.md` files
-- Names of your commands, rules, and MCP servers
-- Usage statistics (tool counts, languages, activity patterns)
-
-The file is local-only and never sent anywhere. Use `--anonymize` to strip identifying paths before sharing.
+Everything stays local. The generated HTML is a self-contained file that is never sent anywhere. Use `--anonymize` to strip paths before sharing.
 
 ## License
 
