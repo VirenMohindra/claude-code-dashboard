@@ -446,6 +446,10 @@ export function buildDashboardData(raw) {
         .map((r) => `${r.name} (${r.drift.commitsSince} commits since config update)`)
         .join(", "),
       action: "Review and update CLAUDE.md in these repos",
+      meta: {
+        kind: "config-drift",
+        repos: highDriftRepos.map((r) => ({ name: r.name, commitsSince: r.drift.commitsSince })),
+      },
     });
   }
 
@@ -461,6 +465,10 @@ export function buildDashboardData(raw) {
           ? `Top candidates: ${withStack.map((r) => `${r.name} (${r.techStack.join(", ")})`).join(", ")}`
           : "",
         action: "Run claude-code-dashboard init --template <stack> in these repos",
+        meta: {
+          kind: "unconfigured-repos",
+          repos: withStack.map((r) => ({ name: r.name, techStack: r.techStack })),
+        },
       });
     }
   }
@@ -472,6 +480,10 @@ export function buildDashboardData(raw) {
       title: `${mcpPromotions.length} MCP server${mcpPromotions.length > 1 ? "s" : ""} could be promoted to global`,
       detail: mcpPromotions.map((p) => `${p.name} (in ${p.projects.length} projects)`).join(", "),
       action: "Add to ~/.claude/mcp_config.json for all projects",
+      meta: {
+        kind: "mcp-promotion",
+        servers: mcpPromotions.map((p) => ({ name: p.name, projectCount: p.projects.length })),
+      },
     });
   }
 
@@ -483,6 +495,10 @@ export function buildDashboardData(raw) {
       title: `${redundantMcp.length} MCP server${redundantMcp.length > 1 ? "s are" : " is"} global but also in project .mcp.json`,
       detail: redundantMcp.map((s) => `${s.name} (${s.projects.join(", ")})`).join("; "),
       action: "Remove from project .mcp.json — global config already covers all projects",
+      meta: {
+        kind: "mcp-redundant",
+        servers: redundantMcp.map((s) => ({ name: s.name, projects: s.projects })),
+      },
     });
   }
 
@@ -495,7 +511,15 @@ export function buildDashboardData(raw) {
         .slice(0, 3)
         .map((s) => `${s.name} (${s.reasons.join(", ")})`)
         .join(", "),
-      action: "Check the Skills & MCP tab for install commands",
+      action: "Check the Config tab for install commands",
+      meta: {
+        kind: "mcp-recommendations",
+        servers: recommendedMcpServers.slice(0, 5).map((s) => ({
+          name: s.name,
+          installCommand: s.installCommand,
+          reasons: s.reasons,
+        })),
+      },
     });
   }
 
@@ -518,6 +542,10 @@ export function buildDashboardData(raw) {
       title: `${widelyRelevant.length} skill${widelyRelevant.length > 1 ? "s" : ""} relevant across 3+ repos`,
       detail: top.map(([name, repos]) => `${name} (${repos.length} repos)`).join(", "),
       action: "Consider adding these skills to your global config",
+      meta: {
+        kind: "shared-skills",
+        skills: top.map(([name, repos]) => ({ name, repoCount: repos.length })),
+      },
     });
   }
 
@@ -534,6 +562,14 @@ export function buildDashboardData(raw) {
         .map((r) => `${r.name} (${r.healthScore}/100): ${r.healthReasons[0]}`)
         .join("; "),
       action: "Small changes for measurable improvement",
+      meta: {
+        kind: "health-quickwins",
+        repos: quickWinRepos.map((r) => ({
+          name: r.name,
+          healthScore: r.healthScore,
+          topReason: r.healthReasons[0],
+        })),
+      },
     });
   }
 
@@ -544,6 +580,7 @@ export function buildDashboardData(raw) {
       title: "Generate your Claude Code Insights report",
       detail: "Get personalized usage patterns, friction points, and feature suggestions",
       action: "Run /insights in Claude Code",
+      meta: { kind: "insights-report" },
     });
   }
 

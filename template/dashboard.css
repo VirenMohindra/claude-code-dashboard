@@ -4,9 +4,9 @@
   --surface2: #1a1a1a;
   --border: #262626;
   --text: #e5e5e5;
-  --text-dim: #777;
+  --text-dim: #999;
   --accent: #c4956a;
-  --accent-dim: #8b6a4a;
+  --accent-dim: #b08a60;
   --green: #4ade80;
   --blue: #60a5fa;
   --purple: #a78bfa;
@@ -19,7 +19,7 @@
   --surface2: #f0f0f0;
   --border: #e0e0e0;
   --text: #1a1a1a;
-  --text-dim: #666;
+  --text-dim: #555;
   --accent: #9b6b47;
   --accent-dim: #b8956e;
   --green: #16a34a;
@@ -643,7 +643,7 @@ details.cmd-detail > summary::-webkit-details-marker {
 .card-header h2 {
   margin-bottom: 0;
 }
-.copy-md-btn {
+.copy-prompt-btn {
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: 5px;
@@ -656,7 +656,7 @@ details.cmd-detail > summary::-webkit-details-marker {
     color 0.15s;
   white-space: nowrap;
 }
-.copy-md-btn:hover {
+.copy-prompt-btn:hover {
   border-color: var(--accent-dim);
   color: var(--text);
 }
@@ -797,7 +797,8 @@ details.cmd-detail > summary::-webkit-details-marker {
   margin-top: 0.5rem;
   font-size: 0.72rem;
   color: var(--accent);
-  text-decoration: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .report-link:hover {
   text-decoration: underline;
@@ -1253,7 +1254,7 @@ details.cmd-detail > summary::-webkit-details-marker {
 }
 .unconfigured-item .upath {
   font-size: 0.6rem;
-  color: #555;
+  color: var(--text-dim);
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;

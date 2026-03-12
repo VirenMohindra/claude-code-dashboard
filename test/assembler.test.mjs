@@ -23,8 +23,8 @@ describe("generateDashboardHtml (assembler)", () => {
 
   it("includes all tab sections", () => {
     const html = generateDashboardHtml(data);
-    assert.ok(html.includes('id="tab-overview"'));
-    assert.ok(html.includes('id="tab-skills-mcp"'));
+    assert.ok(html.includes('id="tab-home"'));
+    assert.ok(html.includes('id="tab-config"'));
     assert.ok(html.includes('id="tab-analytics"'));
     assert.ok(html.includes('id="tab-repos"'));
     assert.ok(html.includes('id="tab-reference"'));
@@ -42,7 +42,7 @@ describe("generateDashboardHtml (assembler)", () => {
     const html = generateDashboardHtml(data);
     assert.ok(html.includes("Coverage"));
     assert.ok(html.includes("Avg Health"));
-    assert.ok(html.includes("Global Commands"));
+    assert.ok(html.includes("Repos"));
   });
 
   it("includes section IDs for scroll targets", () => {
@@ -68,19 +68,22 @@ describe("generateDashboardHtml (assembler)", () => {
     assert.ok(html.includes("header-actions"));
   });
 
-  it("renders copy-markdown button and data-markdown attribute when insights exist", () => {
+  it("renders copy-prompt button and data-prompt attribute when insights exist", () => {
     const html = generateDashboardHtml(data);
     const body = html.split("</style>")[1];
-    assert.ok(body.includes("copy-md-btn"), "Should render copy markdown button");
-    assert.ok(/data-markdown="/.test(body), "Should embed markdown in data attribute");
-    assert.ok(body.includes("# Dashboard Insights"), "Markdown should contain insights heading");
+    assert.ok(body.includes("copy-prompt-btn"), "Should render copy prompt button");
+    assert.ok(/data-prompt="/.test(body), "Should embed prompt in data attribute");
+    assert.ok(
+      body.includes("Which of these would you like to tackle first?"),
+      "Prompt should end with interactive question",
+    );
   });
 
-  it("omits copy-markdown button when no insights", () => {
+  it("omits copy-prompt button when no insights", () => {
     const noInsightsData = { ...data, insights: [] };
     const html = generateDashboardHtml(noInsightsData);
     const body = html.split("</style>")[1];
-    assert.ok(!/data-markdown="/.test(body), "Should not embed markdown when no insights");
+    assert.ok(!/data-prompt="/.test(body), "Should not embed prompt when no insights");
   });
 
   it("handles empty data gracefully", () => {

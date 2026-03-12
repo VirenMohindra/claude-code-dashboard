@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 // Now that pure functions live in src/ modules (no side effects on import),
 // we import them directly instead of re-implementing them here.
-import { esc, anonymizePath, insightsToMarkdown } from "../src/helpers.mjs";
+import { esc, anonymizePath, insightsToPrompt } from "../src/helpers.mjs";
 import { relativeTime, freshnessClass } from "../src/freshness.mjs";
 import { ONE_DAY, THIRTY_DAYS, NINETY_DAYS, ONE_YEAR } from "../src/constants.mjs";
 import { getDescFromContent } from "../src/markdown.mjs";
@@ -1458,52 +1458,135 @@ describe("computeDashboardDiff()", () => {
   });
 });
 
-// ── insightsToMarkdown ──────────────────────────────────────────────────────
+// ── insightsToPrompt ──────────────────────────────────────────────────────
 
-describe("insightsToMarkdown()", () => {
+describe("insightsToPrompt()", () => {
   it("returns empty string for empty input", () => {
-    assert.equal(insightsToMarkdown([]), "");
-    assert.equal(insightsToMarkdown(null), "");
-    assert.equal(insightsToMarkdown(undefined), "");
+    assert.equal(insightsToPrompt([]), "");
+    assert.equal(insightsToPrompt(null), "");
+    assert.equal(insightsToPrompt(undefined), "");
   });
 
-  it("uses correct icon per insight type", () => {
-    const types = ["warning", "tip", "promote", "info"];
-    const expected = ["\u26A0\uFE0F", "\u2728", "\u2B06", "\u2139\uFE0F"];
-    for (let i = 0; i < types.length; i++) {
-      const md = insightsToMarkdown([{ type: types[i], title: "test" }]);
-      assert.ok(md.includes(expected[i]), `${types[i]} should use ${expected[i]}`);
-    }
-  });
-
-  it("falls back to info icon for unknown type", () => {
-    const md = insightsToMarkdown([{ type: "unknown", title: "test" }]);
-    assert.ok(md.includes("\u2139\uFE0F"));
-  });
-
-  it("includes title, detail, and action", () => {
-    const md = insightsToMarkdown([
+  it("generates config-drift prompt with repo names and commit counts", () => {
+    const prompt = insightsToPrompt([
       {
         type: "warning",
-        title: "Drift detected",
-        detail: "repo-a, repo-b",
-        action: "Update config",
+        title: "2 repos have high config drift",
+        detail: "repo-a (46 commits), repo-b (32 commits)",
+        action: "Review and update CLAUDE.md",
+        meta: {
+          kind: "config-drift",
+          repos: [
+            { name: "repo-a", commitsSince: 46 },
+            { name: "repo-b", commitsSince: 32 },
+          ],
+        },
       },
     ]);
-    assert.ok(md.includes("# Dashboard Insights"));
-    assert.ok(md.includes("## \u26A0\uFE0F Drift detected"));
-    assert.ok(md.includes("repo-a, repo-b"));
-    assert.ok(md.includes("**Action:** Update config"));
+    assert.ok(prompt.includes("repo-a (46 commits since last update)"));
+    assert.ok(prompt.includes("repo-b (32 commits since last update)"));
+    assert.ok(prompt.includes("Read the current CLAUDE.md"));
+    assert.ok(prompt.includes("git log"));
   });
 
-  it("skips missing detail and action", () => {
-    const md = insightsToMarkdown([{ type: "info", title: "Just a title" }]);
-    assert.ok(md.includes("Just a title"));
-    assert.ok(!md.includes("**Action:**"));
+  it("generates unconfigured-repos prompt with tech stacks", () => {
+    const prompt = insightsToPrompt([
+      {
+        type: "info",
+        title: "10 repos unconfigured",
+        meta: {
+          kind: "unconfigured-repos",
+          repos: [
+            { name: "my-app", techStack: ["next", "react"] },
+            { name: "api", techStack: ["python"] },
+          ],
+        },
+      },
+    ]);
+    assert.ok(prompt.includes("my-app (next, react)"));
+    assert.ok(prompt.includes("api (python)"));
+    assert.ok(prompt.includes("Generate a concise CLAUDE.md"));
   });
 
-  it("does not HTML-escape content (raw markdown)", () => {
-    const md = insightsToMarkdown([{ type: "info", title: 'Use <code> & "quotes"' }]);
-    assert.ok(md.includes('<code> & "quotes"'));
+  it("generates mcp-recommendations prompt with install commands", () => {
+    const prompt = insightsToPrompt([
+      {
+        type: "tip",
+        title: "2 MCP servers recommended",
+        meta: {
+          kind: "mcp-recommendations",
+          servers: [
+            {
+              name: "Vercel",
+              installCommand: "claude mcp add --transport http vercel https://mcp.vercel.com",
+              reasons: ["17 next repos detected"],
+            },
+            { name: "Stripe", installCommand: "", reasons: ["mentioned in descriptions"] },
+          ],
+        },
+      },
+    ]);
+    assert.ok(prompt.includes("Vercel"));
+    assert.ok(prompt.includes("claude mcp add --transport http vercel"));
+    assert.ok(prompt.includes("17 next repos detected"));
+    assert.ok(!prompt.includes("\n  \n"), "Should not include empty install command line");
+  });
+
+  it("generates mcp-redundant prompt with project paths", () => {
+    const prompt = insightsToPrompt([
+      {
+        type: "tip",
+        title: "1 MCP server redundant",
+        meta: {
+          kind: "mcp-redundant",
+          servers: [{ name: "sentry", projects: ["~/projects/warden"] }],
+        },
+      },
+    ]);
+    assert.ok(prompt.includes("sentry: remove from ~/projects/warden"));
+  });
+
+  it("generates health-quickwins prompt with scores and reasons", () => {
+    const prompt = insightsToPrompt([
+      {
+        type: "tip",
+        title: "Quick wins",
+        meta: {
+          kind: "health-quickwins",
+          repos: [{ name: "my-repo", healthScore: 70, topReason: "add rules" }],
+        },
+      },
+    ]);
+    assert.ok(prompt.includes("my-repo (70/100): add rules"));
+    assert.ok(prompt.includes("Pick a repo"));
+  });
+
+  it("falls back to title/detail/action for insights without meta", () => {
+    const prompt = insightsToPrompt([
+      { type: "info", title: "Some finding", detail: "details here", action: "do this" },
+    ]);
+    assert.ok(prompt.includes("Some finding"));
+    assert.ok(prompt.includes("details here"));
+    assert.ok(prompt.includes("do this"));
+  });
+
+  it("ends with an interactive question", () => {
+    const prompt = insightsToPrompt([
+      {
+        type: "info",
+        title: "test",
+        meta: { kind: "insights-report" },
+      },
+    ]);
+    assert.ok(prompt.includes("Which of these would you like to tackle first?"));
+  });
+
+  it("numbers multiple insights", () => {
+    const prompt = insightsToPrompt([
+      { type: "warning", title: "A", meta: { kind: "insights-report" } },
+      { type: "info", title: "B", meta: { kind: "insights-report" } },
+    ]);
+    assert.ok(prompt.includes("1. "));
+    assert.ok(prompt.includes("2. "));
   });
 });

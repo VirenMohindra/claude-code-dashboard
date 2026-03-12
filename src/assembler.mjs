@@ -2,12 +2,13 @@ import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
-import { esc, insightsToMarkdown } from "./helpers.mjs";
+import { esc, insightsToPrompt } from "./helpers.mjs";
 import { VERSION, REPO_URL } from "./constants.mjs";
 import { renderCmd, renderRule, renderRepoCard } from "./render.mjs";
 import {
   renderSkillsCard,
   renderMcpCard,
+  renderMcpRecommendedCard,
   renderToolsCard,
   renderLangsCard,
   renderErrorsCard,
@@ -71,12 +72,20 @@ export function generateDashboardHtml(data) {
   <button id="refresh-btn" class="header-btn" title="Copy refresh command to clipboard" aria-label="Copy refresh command">&#8635; refresh</button>
   <button id="theme-toggle" class="theme-toggle" title="Toggle light/dark mode" aria-label="Toggle theme"><span class="theme-icon"></span></button>
 </div>
-<p class="sub">generated ${timestamp} · <a href="${esc(REPO_URL)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">v${esc(VERSION)}</a></p>`;
+<p class="sub">generated ${timestamp} · <a href="${esc(REPO_URL)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:underline;text-underline-offset:2px">v${esc(VERSION)}</a></p>`;
 
   const statsBar = renderStatsBar(data);
 
-  // Overview tab
-  const overviewCommands = `<div class="top-grid">
+  // Home tab — actionable content first
+  const insightsPrompt = insightsToPrompt(insights);
+  const insightsHtml = renderInsightsCard(insights, insightsPrompt);
+  const mcpRecsHtml = renderMcpRecommendedCard(recommendedMcpServers);
+  const chainsHtml = renderChainsCard(chains);
+  const consolidationHtml = renderConsolidationCard(consolidationGroups);
+  const tabHome = `${insightsHtml}\n  ${mcpRecsHtml}\n  ${chainsHtml}\n  ${consolidationHtml}`;
+
+  // Config tab — stable reference: commands, rules, skills, MCP servers
+  const commandsRulesHtml = `<div class="top-grid">
     <div class="card" id="section-commands" style="margin-bottom:0">
       <h2>Global Commands <span class="n">${globalCmds.length}</span></h2>
       ${globalCmds.map((c) => renderCmd(c)).join("\n  ")}
@@ -86,14 +95,7 @@ export function generateDashboardHtml(data) {
       ${globalRules.map((r) => renderRule(r)).join("\n  ")}
     </div>
   </div>`;
-  const insightsMarkdown = insightsToMarkdown(insights);
-  const insightsHtml = renderInsightsCard(insights, insightsMarkdown);
-  const chainsHtml = renderChainsCard(chains);
-  const consolidationHtml = renderConsolidationCard(consolidationGroups);
-  const tabOverview = `${overviewCommands}\n  ${insightsHtml}\n  ${chainsHtml}\n  ${consolidationHtml}`;
-
-  // Skills & MCP tab
-  const tabSkillsMcp = `${renderSkillsCard(globalSkills)}\n  ${renderMcpCard(mcpSummary, mcpPromotions, formerMcpServers, recommendedMcpServers, availableMcpServers, registryTotal)}`;
+  const tabConfig = `${commandsRulesHtml}\n  ${renderSkillsCard(globalSkills)}\n  ${renderMcpCard(mcpSummary, mcpPromotions, formerMcpServers, availableMcpServers, registryTotal)}`;
 
   // Analytics tab
   const insightsReportHtml = renderInsightsReportCard(insightsReport);
@@ -146,8 +148,8 @@ export function generateDashboardHtml(data) {
   html = html.replace("/* {{JS}} */", _js);
   html = html.replace("<!-- {{HEADER}} -->", header);
   html = html.replace("<!-- {{STATS_BAR}} -->", statsBar);
-  html = html.replace("<!-- {{TAB_OVERVIEW}} -->", tabOverview);
-  html = html.replace("<!-- {{TAB_SKILLS_MCP}} -->", tabSkillsMcp);
+  html = html.replace("<!-- {{TAB_HOME}} -->", tabHome);
+  html = html.replace("<!-- {{TAB_CONFIG}} -->", tabConfig);
   html = html.replace("<!-- {{TAB_ANALYTICS}} -->", tabAnalytics);
   html = html.replace("<!-- {{TAB_REPOS}} -->", tabRepos);
   html = html.replace("<!-- {{TAB_REFERENCE}} -->", tabReference);

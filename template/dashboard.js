@@ -133,19 +133,19 @@ function showToast(msg) {
   }, 2000);
 }
 
-// ── Copy Markdown button ────────────────────────────────────
-document.querySelectorAll(".copy-md-btn").forEach(function (btn) {
+// ── Copy as Prompt button ────────────────────────────────────
+document.querySelectorAll(".copy-prompt-btn").forEach(function (btn) {
   btn.addEventListener("click", function () {
-    var card = btn.closest("[data-markdown]");
+    var card = btn.closest("[data-prompt]");
     if (!card) return;
-    var md = card.dataset.markdown;
+    var prompt = card.dataset.prompt;
     navigator.clipboard
-      .writeText(md)
+      .writeText(prompt)
       .then(function () {
-        showToast("Markdown copied to clipboard");
+        showToast("Prompt copied \u2014 paste into Claude Code");
       })
       .catch(function () {
-        showToast("Copy failed \u2014 use browser copy from the insights card");
+        showToast("Copy failed \u2014 try selecting the text manually");
       });
   });
 });

@@ -21,15 +21,33 @@ export function renderSkillsCard(globalSkills) {
 </div>`;
 }
 
+export function renderMcpRecommendedCard(recommendedMcpServers) {
+  if (!recommendedMcpServers.length) return "";
+  return `<div class="card">
+  <h2>Recommended MCP Servers <span class="n">${recommendedMcpServers.length}</span></h2>
+  ${recommendedMcpServers
+    .map(
+      (s) =>
+        `<div class="mcp-recommended"><span class="mcp-name">${esc(s.name)}</span> <span class="mcp-rec-badge">recommended</span>` +
+        (s.description ? `<div class="mcp-desc">${esc(s.description)}</div>` : "") +
+        (s.reasons && s.reasons.length
+          ? `<div class="mcp-reason">${s.reasons.map((r) => esc(r)).join(", ")}</div>`
+          : "") +
+        (s.installCommand ? `<code class="mcp-install">${esc(s.installCommand)}</code>` : "") +
+        `</div>`,
+    )
+    .join("\n    ")}
+</div>`;
+}
+
 export function renderMcpCard(
   mcpSummary,
   mcpPromotions,
   formerMcpServers,
-  recommendedMcpServers,
   availableMcpServers,
   registryTotal,
 ) {
-  if (!mcpSummary.length && !recommendedMcpServers.length && !availableMcpServers.length) return "";
+  if (!mcpSummary.length && !availableMcpServers.length) return "";
   const rows = mcpSummary
     .map((s) => {
       const disabledClass = s.disabledIn > 0 ? " mcp-disabled" : "";
@@ -69,24 +87,6 @@ export function renderMcpCard(
     })
     .join("\n    ")}`
     : "";
-  const recommendedHtml = recommendedMcpServers.length
-    ? `<details class="mcp-section"${recommendedMcpServers.length <= 5 ? " open" : ""}>
-    <summary class="label" style="cursor:pointer;margin-top:.75rem">Recommended <span class="cat-n">${recommendedMcpServers.length}</span></summary>
-    ${recommendedMcpServers
-      .map(
-        (s) =>
-          `<div class="mcp-recommended"><span class="mcp-name">${esc(s.name)}</span> <span class="mcp-rec-badge">recommended</span>` +
-          (s.description ? `<div class="mcp-desc">${esc(s.description)}</div>` : "") +
-          (s.reasons && s.reasons.length
-            ? `<div class="mcp-reason">${s.reasons.map((r) => esc(r)).join(", ")}</div>`
-            : "") +
-          (s.installCommand ? `<code class="mcp-install">${esc(s.installCommand)}</code>` : "") +
-          `</div>`,
-      )
-      .join("\n    ")}
-  </details>`
-    : "";
-
   const availableHtml = availableMcpServers.length
     ? `<details class="mcp-section">
     <summary class="label" style="cursor:pointer;margin-top:.75rem">Available <span class="cat-n">${availableMcpServers.length}</span></summary>
@@ -112,7 +112,6 @@ export function renderMcpCard(
   ${rows}
   ${promoteHtml}
   ${formerHtml}
-  ${recommendedHtml}
   ${availableHtml}
   ${registryNote}
 </div>`;
@@ -378,13 +377,13 @@ export function renderReferenceCard() {
 </div>`;
 }
 
-export function renderInsightsCard(insights, markdown) {
+export function renderInsightsCard(insights, prompt) {
   if (!insights || !insights.length) return "";
-  const mdAttr = markdown ? ` data-markdown="${esc(markdown)}"` : "";
-  return `<div class="card insight-card"${mdAttr}>
+  const promptAttr = prompt ? ` data-prompt="${esc(prompt)}"` : "";
+  return `<div class="card insight-card"${promptAttr}>
     <div class="card-header">
       <h2>Insights <span class="n">${insights.length}</span></h2>
-      ${markdown ? `<button class="copy-md-btn" title="Copy as Markdown">&#128203; copy markdown</button>` : ""}
+      ${prompt ? `<button class="copy-prompt-btn" title="Copy as a prompt for Claude Code">&#128203; copy as prompt</button>` : ""}
     </div>
     ${insights
       .map(
@@ -437,29 +436,19 @@ export function renderInsightsReportCard(insightsReport) {
 }
 
 export function renderStatsBar(data) {
-  const {
-    coveragePct,
-    configuredCount,
-    totalRepos,
-    avgHealth,
-    globalCmds,
-    globalSkills,
-    totalRepoCmds,
-    mcpCount,
-    driftCount,
-    ccusageData,
-    usageAnalytics,
-  } = data;
+  const { coveragePct, configuredCount, totalRepos, avgHealth, driftCount, ccusageData } = data;
+  const driftStat =
+    driftCount > 0
+      ? `<div class="stat" data-nav="repos" data-section="repo-grid" title="View drifting repos" style="border-color:#f8717133"><b style="color:var(--red)">${driftCount}</b><span>Drifting Repos</span></div>`
+      : "";
+  const spendStat = ccusageData
+    ? `<div class="stat" data-nav="analytics" data-section="section-activity" title="View analytics" style="border-color:#4ade8033"><b style="color:var(--green)">$${Math.round(Number(ccusageData.totals.totalCost) || 0).toLocaleString()}</b><span>Total Spent</span></div>`
+    : "";
   return `<div class="stats">
   <div class="stat coverage" data-nav="repos" data-section="repo-grid" title="View repos"><b>${coveragePct}%</b><span>Coverage (${configuredCount}/${totalRepos})</span></div>
   <div class="stat" data-nav="repos" data-section="repo-grid" title="View repos" style="${avgHealth >= 70 ? "border-color:#4ade8033" : avgHealth >= 40 ? "border-color:#fbbf2433" : "border-color:#f8717133"}"><b style="color:${healthScoreColor(avgHealth)}">${avgHealth}</b><span>Avg Health</span></div>
-  <div class="stat" data-nav="overview" data-section="section-commands" title="View commands"><b>${globalCmds.length}</b><span>Global Commands</span></div>
-  <div class="stat" data-nav="skills-mcp" data-section="section-skills" title="View skills"><b>${globalSkills.length}</b><span>Skills</span></div>
-  <div class="stat" data-nav="repos" data-section="repo-grid" title="View repos"><b>${totalRepoCmds}</b><span>Repo Commands</span></div>
-  ${mcpCount > 0 ? `<div class="stat" data-nav="skills-mcp" data-section="section-mcp" title="View MCP servers"><b>${mcpCount}</b><span>MCP Servers</span></div>` : ""}
-  ${driftCount > 0 ? `<div class="stat" data-nav="repos" data-section="repo-grid" title="View drifting repos" style="border-color:#f8717133"><b style="color:var(--red)">${driftCount}</b><span>Drifting Repos</span></div>` : ""}
-  ${ccusageData ? `<div class="stat" data-nav="analytics" data-section="section-activity" title="View analytics" style="border-color:#4ade8033"><b style="color:var(--green)">$${Math.round(Number(ccusageData.totals.totalCost) || 0).toLocaleString()}</b><span>Total Spent</span></div>` : ""}
-  ${ccusageData ? `<div class="stat" data-nav="analytics" data-section="section-activity" title="View analytics"><b>${formatTokens(ccusageData.totals.totalTokens).replace(" tokens", "")}</b><span>Total Tokens</span></div>` : ""}
-  ${usageAnalytics.heavySessions > 0 ? `<div class="stat" data-nav="analytics" data-section="section-activity" title="View analytics"><b>${usageAnalytics.heavySessions}</b><span>Heavy Sessions</span></div>` : ""}
+  <div class="stat" data-nav="repos" data-section="repo-grid" title="View repos"><b>${totalRepos}</b><span>Repos</span></div>
+  ${driftStat}
+  ${spendStat}
 </div>`;
 }
