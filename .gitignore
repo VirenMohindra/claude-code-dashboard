@@ -2,3 +2,4 @@ node_modules/
 /dashboard.html
 .DS_Store
 *.log
+docs/plans/

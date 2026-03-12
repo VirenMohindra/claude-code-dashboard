@@ -169,15 +169,18 @@ if (refreshBtn) {
 document.addEventListener("click", function (e) {
   var install = e.target.closest(".mcp-install");
   if (!install) return;
-  navigator.clipboard.writeText(install.textContent).then(function () {
-    var orig = install.textContent;
-    install.textContent = "copied!";
-    setTimeout(function () {
-      install.textContent = orig;
-    }, 1500);
-  }).catch(function () {
-    /* clipboard unavailable (file:// protocol, permissions) */
-  });
+  navigator.clipboard
+    .writeText(install.textContent)
+    .then(function () {
+      var orig = install.textContent;
+      install.textContent = "copied!";
+      setTimeout(function () {
+        install.textContent = orig;
+      }, 1500);
+    })
+    .catch(function () {
+      /* clipboard unavailable (file:// protocol, permissions) */
+    });
 });
 
 // Custom tooltip for heatmap cells and peak bars

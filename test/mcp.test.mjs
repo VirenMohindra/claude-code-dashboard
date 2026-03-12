@@ -135,7 +135,8 @@ describe("normalizeRegistryResponse()", () => {
               slug: "notion",
               oneLiner: "Connect your Notion workspace",
               url: "https://mcp.notion.com/mcp",
-              claudeCodeCopyText: "claude mcp add --transport http notion https://mcp.notion.com/mcp",
+              claudeCodeCopyText:
+                "claude mcp add --transport http notion https://mcp.notion.com/mcp",
               worksWith: ["claude", "claude-api", "claude-code"],
               toolNames: ["search", "create-pages"],
             },
@@ -148,7 +149,10 @@ describe("normalizeRegistryResponse()", () => {
     assert.equal(result[0].name, "Notion");
     assert.equal(result[0].slug, "notion");
     assert.equal(result[0].description, "Connect your Notion workspace");
-    assert.equal(result[0].installCommand, "claude mcp add --transport http notion https://mcp.notion.com/mcp");
+    assert.equal(
+      result[0].installCommand,
+      "claude mcp add --transport http notion https://mcp.notion.com/mcp",
+    );
     assert.deepEqual(result[0].tools, ["search", "create-pages"]);
   });
 
@@ -161,7 +165,7 @@ describe("normalizeRegistryResponse()", () => {
             "com.anthropic.api/mcp-registry": {
               displayName: "HubSpot",
               slug: "hubspot",
-              worksWith: ["claude", "claude-api"],  // no claude-code
+              worksWith: ["claude", "claude-api"], // no claude-code
             },
           },
         },

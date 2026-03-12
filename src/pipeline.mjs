@@ -236,7 +236,9 @@ export function buildDashboardData(raw) {
 
   // Filter out already-installed servers
   const notInstalled = registryServers.filter(
-    (s) => !installedIds.has((s.slug || "").toLowerCase()) && !installedIds.has((s.name || "").toLowerCase()),
+    (s) =>
+      !installedIds.has((s.slug || "").toLowerCase()) &&
+      !installedIds.has((s.name || "").toLowerCase()),
   );
 
   // Collect tech stacks and description text from all repos

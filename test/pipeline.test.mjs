@@ -1494,7 +1494,10 @@ describe("buildDashboardData()", () => {
       const recommendedSlugs = data.recommendedMcpServers.map((s) => s.slug);
       assert.ok(recommendedSlugs.includes("vercel"), "vercel should be recommended for next stack");
       assert.ok(recommendedSlugs.includes("figma"), "figma should be recommended for next stack");
-      assert.ok(!recommendedSlugs.includes("linear"), "linear should not be recommended without match");
+      assert.ok(
+        !recommendedSlugs.includes("linear"),
+        "linear should not be recommended without match",
+      );
 
       // Check that recommended servers have reasons
       const vercel = data.recommendedMcpServers.find((s) => s.slug === "vercel");
@@ -1530,7 +1533,10 @@ describe("buildDashboardData()", () => {
 
       const recommendedSlugs = data.recommendedMcpServers.map((s) => s.slug);
       assert.ok(!recommendedSlugs.includes("vercel"), "installed server should not be recommended");
-      assert.ok(recommendedSlugs.includes("figma"), "non-installed matching server should be recommended");
+      assert.ok(
+        recommendedSlugs.includes("figma"),
+        "non-installed matching server should be recommended",
+      );
     });
 
     it("passes through registryTotal count", () => {

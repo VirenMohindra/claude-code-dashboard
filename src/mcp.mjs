@@ -1,6 +1,11 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync, statSync } from "fs";
 import { join } from "path";
-import { MAX_SESSION_SCAN, MCP_REGISTRY_URL, MCP_REGISTRY_TTL_MS, CLAUDE_DIR } from "./constants.mjs";
+import {
+  MAX_SESSION_SCAN,
+  MCP_REGISTRY_URL,
+  MCP_REGISTRY_TTL_MS,
+  CLAUDE_DIR,
+} from "./constants.mjs";
 
 export function parseUserMcpConfig(content) {
   try {
@@ -193,7 +198,13 @@ export function normalizeRegistryResponse(raw) {
         const name = anth.displayName || entry.name || srv.title || "";
         return {
           name,
-          slug: anth.slug || entry.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
+          slug:
+            anth.slug ||
+            entry.slug ||
+            name
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "-")
+              .replace(/^-|-$/g, ""),
           description: anth.oneLiner || entry.description || srv.description || "",
           url: anth.url || entry.url || "",
           installCommand: anth.claudeCodeCopyText || entry.installCommand || "",
