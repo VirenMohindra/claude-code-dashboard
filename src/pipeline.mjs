@@ -6,7 +6,7 @@
  * All data comes in via the `raw` parameter.
  */
 
-import { SIMILARITY_THRESHOLD } from "./constants.mjs";
+import { SIMILARITY_THRESHOLD, MCP_STACK_HINTS } from "./constants.mjs";
 import { relativeTime, freshnessClass } from "./freshness.mjs";
 import {
   computeHealthScore,
@@ -221,6 +221,87 @@ export function buildDashboardData(raw) {
     return a.name.localeCompare(b.name);
   });
   const mcpCount = mcpSummary.length;
+
+  // ── 3b. MCP Registry — Available & Recommended ────────────────────────
+
+  const registryServers = raw.registryServers || [];
+  const registryTotal = registryServers.length;
+
+  // Build a set of installed server identifiers (lowercase names + slugs)
+  const installedIds = new Set();
+  for (const s of allMcpServers) {
+    installedIds.add(s.name.toLowerCase());
+    if (s.slug) installedIds.add(s.slug.toLowerCase());
+  }
+
+  // Filter out already-installed servers
+  const notInstalled = registryServers.filter(
+    (s) => !installedIds.has((s.slug || "").toLowerCase()) && !installedIds.has((s.name || "").toLowerCase()),
+  );
+
+  // Collect tech stacks from all repos
+  const allStacks = new Set();
+  for (const repo of [...configured, ...unconfigured]) {
+    for (const stack of repo.techStack || []) {
+      allStacks.add(stack.toLowerCase());
+    }
+  }
+
+  // Collect description words from all repos
+  const descWords = new Set();
+  for (const repo of [...configured, ...unconfigured]) {
+    for (const line of repo.desc || []) {
+      for (const word of line.toLowerCase().split(/\s+/)) {
+        descWords.add(word);
+      }
+    }
+  }
+
+  // Match hints against stacks and descriptions
+  const recommendedSlugs = new Map(); // slug -> { reasons: [], matchCount: 0 }
+  for (const [key, slugs] of Object.entries(MCP_STACK_HINTS)) {
+    const stackMatches = [...configured, ...unconfigured].filter((r) =>
+      (r.techStack || []).some((s) => s.toLowerCase() === key),
+    );
+    const inDesc = descWords.has(key);
+
+    if (stackMatches.length > 0 || inDesc) {
+      for (const slug of slugs) {
+        if (!recommendedSlugs.has(slug)) {
+          recommendedSlugs.set(slug, { reasons: [], matchCount: 0 });
+        }
+        const entry = recommendedSlugs.get(slug);
+        if (stackMatches.length > 0) {
+          entry.reasons.push(`${stackMatches.length} ${key} repo${stackMatches.length > 1 ? "s" : ""} detected`);
+          entry.matchCount += stackMatches.length;
+        }
+        if (inDesc) {
+          entry.reasons.push("mentioned in repo descriptions");
+          entry.matchCount += 1;
+        }
+      }
+    }
+  }
+
+  // Build recommended list from not-installed servers that match hints
+  const recommendedMcpServers = [];
+  const recommendedSlugSet = new Set();
+  for (const server of notInstalled) {
+    const slug = (server.slug || "").toLowerCase();
+    if (recommendedSlugs.has(slug)) {
+      const { reasons, matchCount } = recommendedSlugs.get(slug);
+      recommendedMcpServers.push({ ...server, reasons, matchCount });
+      recommendedSlugSet.add(slug);
+    }
+  }
+
+  // Sort by relevance (more match signals first)
+  recommendedMcpServers.sort((a, b) => b.matchCount - a.matchCount || a.name.localeCompare(b.name));
+
+  // Available = not-installed minus recommended
+  const availableMcpServers = notInstalled.filter(
+    (s) => !recommendedSlugSet.has((s.slug || "").toLowerCase()),
+  );
 
   // ── 4. Usage Analytics ────────────────────────────────────────────────
 
@@ -493,6 +574,9 @@ export function buildDashboardData(raw) {
     avgHealth,
     driftCount,
     mcpCount,
+    recommendedMcpServers,
+    availableMcpServers,
+    registryTotal,
     scanScope: raw.scanScope,
     insights,
     insightsReport,

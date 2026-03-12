@@ -20,6 +20,7 @@ function makeMinimalRaw(overrides = {}) {
     insightsReportHtml: null,
     chains: [],
     scanScope: "test",
+    registryServers: [],
     ...overrides,
   };
 }
@@ -1437,6 +1438,118 @@ describe("buildDashboardData()", () => {
         originalLength,
         "raw.statsCache should not be mutated",
       );
+    });
+  });
+
+  describe("MCP Registry Integration", () => {
+    it("computes available servers by filtering out installed", () => {
+      const data = buildDashboardData(
+        makeMinimalRaw({
+          userMcpServers: [{ name: "sentry", type: "stdio", scope: "user" }],
+          registryServers: [
+            { name: "Sentry", slug: "sentry", description: "Error tracking" },
+            { name: "Stripe", slug: "stripe", description: "Payments" },
+            { name: "Linear", slug: "linear", description: "Project management" },
+          ],
+        }),
+      );
+
+      assert.equal(data.registryTotal, 3, "registryTotal should count all registry servers");
+      // sentry is installed, so only stripe and linear should be available or recommended
+      const allSlugs = [
+        ...data.availableMcpServers.map((s) => s.slug),
+        ...data.recommendedMcpServers.map((s) => s.slug),
+      ];
+      assert.ok(!allSlugs.includes("sentry"), "installed server should be excluded");
+      assert.ok(allSlugs.includes("stripe"), "non-installed server should be present");
+      assert.ok(allSlugs.includes("linear"), "non-installed server should be present");
+    });
+
+    it("computes recommended servers based on tech stack", () => {
+      const data = buildDashboardData(
+        makeMinimalRaw({
+          repos: [
+            {
+              name: "my-next-app",
+              path: "/test/my-next-app",
+              shortPath: "~/my-next-app",
+              commands: [{ name: "dev", desc: "Start dev", filepath: ".claude/commands/dev.md" }],
+              rules: [],
+              agentsFile: "/test/my-next-app/CLAUDE.md",
+              desc: ["A Next.js application"],
+              sections: [],
+              techStack: ["next"],
+              freshness: Math.floor(Date.now() / 1000),
+              gitRevCount: 0,
+            },
+          ],
+          registryServers: [
+            { name: "Vercel", slug: "vercel", description: "Deploy platform" },
+            { name: "Figma", slug: "figma", description: "Design tool" },
+            { name: "Linear", slug: "linear", description: "Project management" },
+          ],
+        }),
+      );
+
+      const recommendedSlugs = data.recommendedMcpServers.map((s) => s.slug);
+      assert.ok(recommendedSlugs.includes("vercel"), "vercel should be recommended for next stack");
+      assert.ok(recommendedSlugs.includes("figma"), "figma should be recommended for next stack");
+      assert.ok(!recommendedSlugs.includes("linear"), "linear should not be recommended without match");
+
+      // Check that recommended servers have reasons
+      const vercel = data.recommendedMcpServers.find((s) => s.slug === "vercel");
+      assert.ok(vercel.reasons.length > 0, "recommended server should have reasons");
+      assert.ok(vercel.reasons[0].includes("next"), "reason should mention the matching stack");
+    });
+
+    it("excludes installed servers from recommendations", () => {
+      const data = buildDashboardData(
+        makeMinimalRaw({
+          repos: [
+            {
+              name: "my-next-app",
+              path: "/test/my-next-app",
+              shortPath: "~/my-next-app",
+              commands: [{ name: "dev", desc: "Start dev", filepath: ".claude/commands/dev.md" }],
+              rules: [],
+              agentsFile: "/test/my-next-app/CLAUDE.md",
+              desc: [],
+              sections: [],
+              techStack: ["next"],
+              freshness: Math.floor(Date.now() / 1000),
+              gitRevCount: 0,
+            },
+          ],
+          userMcpServers: [{ name: "vercel", type: "stdio", scope: "user" }],
+          registryServers: [
+            { name: "Vercel", slug: "vercel", description: "Deploy platform" },
+            { name: "Figma", slug: "figma", description: "Design tool" },
+          ],
+        }),
+      );
+
+      const recommendedSlugs = data.recommendedMcpServers.map((s) => s.slug);
+      assert.ok(!recommendedSlugs.includes("vercel"), "installed server should not be recommended");
+      assert.ok(recommendedSlugs.includes("figma"), "non-installed matching server should be recommended");
+    });
+
+    it("passes through registryTotal count", () => {
+      const servers = [
+        { name: "A", slug: "a", description: "Server A" },
+        { name: "B", slug: "b", description: "Server B" },
+        { name: "C", slug: "c", description: "Server C" },
+        { name: "D", slug: "d", description: "Server D" },
+        { name: "E", slug: "e", description: "Server E" },
+      ];
+      const data = buildDashboardData(makeMinimalRaw({ registryServers: servers }));
+      assert.equal(data.registryTotal, 5, "registryTotal should equal number of registry servers");
+    });
+
+    it("handles empty registry gracefully", () => {
+      const data = buildDashboardData(makeMinimalRaw());
+      assert.equal(data.registryTotal, 0, "registryTotal should be 0 for empty registry");
+      assert.deepEqual(data.recommendedMcpServers, [], "recommended should be empty");
+      assert.deepEqual(data.availableMcpServers, [], "available should be empty");
     });
   });
 });
