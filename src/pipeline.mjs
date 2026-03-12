@@ -487,6 +487,19 @@ export function buildDashboardData(raw) {
     });
   }
 
+  // MCP recommendations
+  if (recommendedMcpServers.length > 0) {
+    insights.push({
+      type: "tip",
+      title: `${recommendedMcpServers.length} MCP server${recommendedMcpServers.length > 1 ? "s" : ""} recommended for your repos`,
+      detail: recommendedMcpServers
+        .slice(0, 3)
+        .map((s) => `${s.name} (${s.reasons.join(", ")})`)
+        .join(", "),
+      action: "Check the Skills & MCP tab for install commands",
+    });
+  }
+
   // Skill sharing opportunities
   const skillMatchCounts = {};
   for (const r of configured) {
