@@ -98,6 +98,10 @@ export const SKILL_CATEGORIES = {
   "project-specific": ["storybook", "react-native"],
 };
 
+export const MCP_REGISTRY_URL =
+  "https://api.anthropic.com/mcp-registry/v0/servers?visibility=commercial&limit=100";
+export const MCP_REGISTRY_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+
 export const CATEGORY_ORDER = [
   "workflow",
   "code-quality",

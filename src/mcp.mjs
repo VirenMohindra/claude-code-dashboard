@@ -1,6 +1,7 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync, statSync } from "fs";
 import { join } from "path";
-import { MAX_SESSION_SCAN } from "./constants.mjs";
+import { homedir } from "os";
+import { MAX_SESSION_SCAN, MCP_REGISTRY_URL, MCP_REGISTRY_TTL_MS } from "./constants.mjs";
 
 export function parseUserMcpConfig(content) {
   try {
@@ -174,4 +175,78 @@ export function classifyHistoricalServers(
   recent.sort((a, b) => a.name.localeCompare(b.name));
   former.sort((a, b) => a.name.localeCompare(b.name));
   return { recent, former };
+}
+
+/**
+ * Pure normalizer: extract claude-code compatible servers from raw registry API response.
+ * Returns [] on any malformed input.
+ */
+export function normalizeRegistryResponse(raw) {
+  try {
+    if (!raw || !Array.isArray(raw.servers)) return [];
+    return raw.servers
+      .filter((s) => Array.isArray(s.worksWith) && s.worksWith.includes("claude-code"))
+      .map((s) => ({
+        name: s.name,
+        slug: s.slug,
+        description: s.description,
+        url: s.url,
+        installCommand: s.installCommand,
+        worksWith: s.worksWith,
+        tools: s.tools || [],
+      }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Fetch MCP registry servers with 24h file cache.
+ * Falls back to stale cache on network failure, returns [] on total failure.
+ */
+export async function fetchRegistryServers() {
+  const cachePath = join(homedir(), ".claude", "mcp-registry-cache.json");
+
+  // Try fresh cache
+  try {
+    const cached = JSON.parse(readFileSync(cachePath, "utf8"));
+    if (cached._ts && Date.now() - cached._ts < MCP_REGISTRY_TTL_MS) {
+      return normalizeRegistryResponse(cached.data);
+    }
+  } catch {
+    /* no cache or unreadable */
+  }
+
+  // Fetch from registry
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(MCP_REGISTRY_URL, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const normalized = normalizeRegistryResponse(data);
+
+    // Write cache
+    try {
+      writeFileSync(cachePath, JSON.stringify({ _ts: Date.now(), data }));
+    } catch {
+      /* non-critical */
+    }
+
+    return normalized;
+  } catch {
+    /* network failure — try stale cache */
+  }
+
+  // Stale cache fallback (ignore TTL)
+  try {
+    const cached = JSON.parse(readFileSync(cachePath, "utf8"));
+    return normalizeRegistryResponse(cached.data);
+  } catch {
+    /* total failure */
+  }
+
+  return [];
 }
