@@ -227,11 +227,11 @@ export function buildDashboardData(raw) {
   const registryServers = raw.registryServers || [];
   const registryTotal = registryServers.length;
 
-  // Build a set of installed server identifiers (lowercase names + slugs)
+  // Build a set of installed server identifiers (lowercase names)
+  // Use mcpSummary which includes user, project, AND recently-active servers
   const installedIds = new Set();
-  for (const s of allMcpServers) {
+  for (const s of mcpSummary) {
     installedIds.add(s.name.toLowerCase());
-    if (s.slug) installedIds.add(s.slug.toLowerCase());
   }
 
   // Filter out already-installed servers

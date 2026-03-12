@@ -184,16 +184,24 @@ export function normalizeRegistryResponse(raw) {
   try {
     if (!raw || !Array.isArray(raw.servers)) return [];
     return raw.servers
-      .filter((s) => Array.isArray(s.worksWith) && s.worksWith.includes("claude-code"))
-      .map((s) => ({
-        name: s.name || "",
-        slug: s.slug || "",
-        description: s.description || "",
-        url: s.url || "",
-        installCommand: s.installCommand || "",
-        worksWith: s.worksWith,
-        tools: s.tools || [],
-      }));
+      .map((entry) => {
+        // The registry API nests data: entry.server has the MCP spec fields,
+        // entry._meta["com.anthropic.api/mcp-registry"] has Anthropic's curated metadata.
+        // Also support flat shape (used in tests and demo data).
+        const anth = entry?._meta?.["com.anthropic.api/mcp-registry"] || {};
+        const srv = entry?.server || entry || {};
+        const name = anth.displayName || entry.name || srv.title || "";
+        return {
+          name,
+          slug: anth.slug || entry.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
+          description: anth.oneLiner || entry.description || srv.description || "",
+          url: anth.url || entry.url || "",
+          installCommand: anth.claudeCodeCopyText || entry.installCommand || "",
+          worksWith: anth.worksWith || entry.worksWith || [],
+          tools: anth.toolNames || entry.tools || [],
+        };
+      })
+      .filter((s) => Array.isArray(s.worksWith) && s.worksWith.includes("claude-code"));
   } catch {
     return [];
   }

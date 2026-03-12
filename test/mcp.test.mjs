@@ -119,6 +119,69 @@ describe("normalizeRegistryResponse()", () => {
     assert.equal(result.length, 0);
   });
 
+  it("extracts fields from nested registry API shape", () => {
+    const raw = {
+      servers: [
+        {
+          server: {
+            name: "com.notion/mcp",
+            description: "Notion MCP helps you...",
+            title: "Notion",
+            version: "1.0.1",
+          },
+          _meta: {
+            "com.anthropic.api/mcp-registry": {
+              displayName: "Notion",
+              slug: "notion",
+              oneLiner: "Connect your Notion workspace",
+              url: "https://mcp.notion.com/mcp",
+              claudeCodeCopyText: "claude mcp add --transport http notion https://mcp.notion.com/mcp",
+              worksWith: ["claude", "claude-api", "claude-code"],
+              toolNames: ["search", "create-pages"],
+            },
+          },
+        },
+      ],
+    };
+    const result = normalizeRegistryResponse(raw);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].name, "Notion");
+    assert.equal(result[0].slug, "notion");
+    assert.equal(result[0].description, "Connect your Notion workspace");
+    assert.equal(result[0].installCommand, "claude mcp add --transport http notion https://mcp.notion.com/mcp");
+    assert.deepEqual(result[0].tools, ["search", "create-pages"]);
+  });
+
+  it("filters nested servers by claude-code worksWith", () => {
+    const raw = {
+      servers: [
+        {
+          server: { name: "com.hubspot/mcp" },
+          _meta: {
+            "com.anthropic.api/mcp-registry": {
+              displayName: "HubSpot",
+              slug: "hubspot",
+              worksWith: ["claude", "claude-api"],  // no claude-code
+            },
+          },
+        },
+        {
+          server: { name: "com.linear/mcp" },
+          _meta: {
+            "com.anthropic.api/mcp-registry": {
+              displayName: "Linear",
+              slug: "linear",
+              worksWith: ["claude", "claude-api", "claude-code"],
+            },
+          },
+        },
+      ],
+    };
+    const result = normalizeRegistryResponse(raw);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].name, "Linear");
+  });
+
   it("strips extra fields from server objects", () => {
     const raw = {
       servers: [
